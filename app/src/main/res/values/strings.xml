@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Toyota OBD</string>
+    <string name="widget_name">Tableau de bord OBD</string>
+    <string name="widget_description">Données moteur en direct de l\'adaptateur OBD (téléphone et Android Auto)</string>
+</resources>

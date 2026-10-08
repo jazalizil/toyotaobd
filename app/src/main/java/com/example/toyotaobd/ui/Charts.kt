@@ -1,0 +1,300 @@
+package com.example.toyotaobd.ui
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.view.MotionEvent
+import android.view.View
+import androidx.annotation.MainThread
+import com.example.toyotaobd.session.Sample
+import com.example.toyotaobd.session.segments
+import com.github.mikephil.charting.charts.Chart
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.charts.PieChart
+import com.github.mikephil.charting.components.YAxis
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.data.PieData
+import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
+import com.github.mikephil.charting.formatter.ValueFormatter
+import com.github.mikephil.charting.highlight.Highlight
+import com.github.mikephil.charting.listener.ChartTouchListener
+import com.github.mikephil.charting.listener.OnChartGestureListener
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+
+// Graphiques MPAndroidChart du tableau de bord et du widget. Les abscisses sont en secondes depuis
+// le début de la courbe : un Float ne garde pas les millisecondes d'une horloge qui compte depuis le démarrage.
+
+/** Au-delà de cet écart entre deux lectures (console ouverte, PID muet), la courbe est interrompue. */
+internal const val GAP_MS = 15_000L
+
+/** Marge au-delà des graduations extrêmes : une ligne posée sur une borne n'est pas coupée de moitié. */
+private const val EDGE_MARGIN = 0.03f
+
+const val GAUGE_START_DEGREES = 150f
+const val GAUGE_SWEEP_DEGREES = 240f
+
+/** Rayon du trou de la jauge, en % du rayon : l'anneau en occupe le reste. */
+const val GAUGE_HOLE_PERCENT = 84f
+
+private fun Sample.toEntry(startMs: Long) = Entry((timeMs - startMs) / 1_000f, value.toFloat())
+
+/** Ni description, ni légende, ni sélection au toucher ; ignoré par TalkBack (la carte se lit comme une phrase). */
+private fun Chart<*>.setupCommon() {
+    description.isEnabled = false
+    legend.isEnabled = false
+    isHighlightPerTapEnabled = false
+    setNoDataText("")
+    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+}
+
+private fun YAxis.applyScale(scale: ChartScale) {
+    val margin = (scale.max - scale.min).toFloat() * EDGE_MARGIN
+    axisMinimum = scale.min.toFloat() - margin
+    axisMaximum = scale.max.toFloat() + margin
+}
+
+/**
+ * Une série de 2 dp par tronçon (la ligne s'interrompt entre deux lectures trop espacées), puis une
+ * série d'un point, [marked], en [dotColor] entouré d'un anneau [ringColor] s'il est donné.
+ * [highlightColor] : trait vertical de la lecture au doigt, sur les tronçons seulement.
+ */
+private fun trendData(
+    segments: List<List<Sample>>,
+    startMs: Long,
+    lineColor: Int,
+    highlightColor: Int?,
+    marked: Sample,
+    dotColor: Int,
+    ringColor: Int?,
+): LineData {
+    val lines = segments.map { segment ->
+        LineDataSet(segment.map { it.toEntry(startMs) }, null).apply {
+            color = lineColor
+            lineWidth = 2f
+            setDrawCircles(false)
+            setDrawValues(false)
+            isHighlightEnabled = highlightColor != null
+            if (highlightColor != null) {
+                highLightColor = highlightColor
+                highlightLineWidth = 1f
+                setDrawHorizontalHighlightIndicator(false)
+            }
+        }
+    }
+    val dot = LineDataSet(listOf(marked.toEntry(startMs)), null).apply {
+        setDrawValues(false)
+        isHighlightEnabled = false
+        if (ringColor != null) {
+            setCircleColor(ringColor)
+            circleRadius = 6f
+            circleHoleRadius = 4f
+            circleHoleColor = dotColor
+        } else {
+            setCircleColor(dotColor)
+            circleRadius = 4f
+            setDrawCircleHole(false)
+        }
+    }
+    return LineData(lines + dot)
+}
+
+// --- Tendance : carte « Valeur » et tuiles du widget ------------------------------------
+
+/** Courbe sans axe ni interaction, à [insetDp] des bords (place du dernier point). */
+fun LineChart.setupSparkline(insetDp: Float) {
+    setupCommon()
+    setTouchEnabled(false)
+    xAxis.isEnabled = false
+    axisLeft.isEnabled = false
+    axisRight.isEnabled = false
+    minOffset = 0f
+    setExtraOffsets(insetDp, insetDp, insetDp, insetDp)
+}
+
+/**
+ * Tendance sur toute la largeur, des premières aux dernières lectures ; la dernière en [dotColor].
+ * Moins de deux lectures : rien.
+ */
+fun LineChart.showSparkline(
+    samples: List<Sample>,
+    range: ClosedFloatingPointRange<Double>,
+    lineColor: Int,
+    dotColor: Int,
+    ringColor: Int?,
+) {
+    if (samples.size < 2) {
+        data = null
+    } else {
+        axisLeft.applyScale(ChartScale.of(samples.minOf { it.value }, samples.maxOf { it.value }, range))
+        data = trendData(samples.segments(GAP_MS), samples.first().timeMs, lineColor, null, samples.last(), dotColor, ringColor)
+    }
+    invalidate()
+}
+
+/**
+ * Tendances du widget, dessinées hors écran : un widget n'affiche pas de vue personnalisée. Tracé en
+ * blanc (ligne translucide, dernier point plus marqué) pour être teinté aux couleurs du widget ;
+ * [faint] pour une tendance dessinée derrière du texte.
+ * [pixelsPerDp] inférieur à la densité de l'écran réduit la définition (mémoire limitée des widgets).
+ * Sur le thread principal : le graphique crée un Handler.
+ */
+@MainThread
+class SparklineRenderer(context: Context, widthDp: Float, heightDp: Float, pixelsPerDp: Float, faint: Boolean) {
+    private val density = context.resources.displayMetrics.density
+    private val widthPx = (widthDp * density).roundToInt()
+    private val heightPx = (heightDp * density).roundToInt()
+    private val factor = pixelsPerDp / density
+    private val lineColor = Color.argb(if (faint) 80 else 150, 255, 255, 255)
+    private val dotColor = Color.argb(if (faint) 140 else 255, 255, 255, 255)
+    private val chart = LineChart(context).apply {
+        setupSparkline(insetDp = 4f)
+        // Taille fixée à la main : sans mise en page, le graphique ne connaît pas ses dimensions.
+        measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY))
+        layout(0, 0, widthPx, heightPx)
+    }
+
+    fun render(samples: List<Sample>, range: ClosedFloatingPointRange<Double>): Bitmap? {
+        if (samples.size < 2 || widthPx <= 0 || heightPx <= 0) return null
+        chart.showSparkline(samples, range, lineColor, dotColor, ringColor = null)
+        val bitmap = Bitmap.createBitmap(max(1, (widthPx * factor).roundToInt()), max(1, (heightPx * factor).roundToInt()), Bitmap.Config.ARGB_8888)
+        chart.draw(Canvas(bitmap).apply { scale(factor, factor) })
+        return bitmap
+    }
+}
+
+// --- Courbe : fenêtre fixe, graduations, lecture au doigt --------------------------------
+
+/**
+ * Courbe d'une durée fixe, graduée à gauche. Lecture au doigt : tant qu'il reste posé, [onSelect]
+ * reçoit l'abscisse de la lecture la plus proche, puis null quand il se lève ou que la grille défile.
+ * Une simple touche appelle [onTap] (ouverture du détail depuis une carte).
+ * [labelSizeDp] : taille des graduations, pour laisser une demi-hauteur de texte en haut et en bas.
+ */
+fun LineChart.setupWindow(labelSizeDp: Float, onTap: () -> Unit = {}, onSelect: (Float?) -> Unit) {
+    setupCommon()
+    setNoDataText("En attente de valeurs…")
+    xAxis.isEnabled = false
+    axisRight.isEnabled = false
+    axisLeft.apply {
+        textSize = labelSizeDp
+        xOffset = 6f
+        setDrawAxisLine(false)
+        gridLineWidth = 1f
+        isGranularityEnabled = true
+    }
+    rendererLeftYAxis.paintAxisLabels.fontFeatureSettings = "tnum"
+    minOffset = 0f
+    // La largeur réservée aux graduations compte xOffset des deux côtés du texte : on retire celui de gauche.
+    setExtraOffsets(-6f, labelSizeDp / 2, 6f, labelSizeDp / 2)
+
+    // Sans zoom ni décalage, glisser le doigt déplace la sélection au lieu de faire défiler la courbe.
+    isDragEnabled = true
+    setScaleEnabled(false)
+    isDoubleTapToZoomEnabled = false
+    isDragDecelerationEnabled = false
+    isHighlightPerDragEnabled = true
+    setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
+        override fun onValueSelected(e: Entry, h: Highlight) = onSelect(e.x)
+        override fun onNothingSelected() = onSelect(null)
+    })
+    onChartGestureListener = object : OnChartGestureListener {
+        // Sélection dès que le doigt se pose, retirée quand il se lève (ou que la grille reprend le geste).
+        override fun onChartGestureStart(me: MotionEvent, lastPerformedGesture: ChartTouchListener.ChartGesture?) =
+            highlightValue(getHighlightByTouchPoint(me.x, me.y), true)
+
+        override fun onChartGestureEnd(me: MotionEvent, lastPerformedGesture: ChartTouchListener.ChartGesture?) =
+            highlightValue(null, true)
+
+        override fun onChartLongPressed(me: MotionEvent) = Unit
+        override fun onChartDoubleTapped(me: MotionEvent) = Unit
+        override fun onChartSingleTapped(me: MotionEvent) = onTap()
+        override fun onChartFling(me1: MotionEvent?, me2: MotionEvent?, velocityX: Float, velocityY: Float) = Unit
+        override fun onChartScale(me: MotionEvent, scaleX: Float, scaleY: Float) = Unit
+        override fun onChartTranslate(me: MotionEvent, dX: Float, dY: Float) = Unit
+    }
+}
+
+/**
+ * Lectures [recent] de [startMs] à [startMs] + [windowMs] (bord droit : la dernière lecture, tous PID
+ * confondus). Le point est sur [selected] pendant une lecture au doigt, sinon sur la dernière valeur.
+ */
+fun LineChart.showWindow(
+    recent: List<Sample>,
+    scale: ChartScale?,
+    startMs: Long,
+    windowMs: Long,
+    selected: Sample?,
+    colors: WindowColors,
+) {
+    setNoDataTextColor(colors.labels)
+    if (scale == null || recent.isEmpty()) {
+        data = null
+        invalidate()
+        return
+    }
+    xAxis.axisMinimum = 0f
+    xAxis.axisMaximum = windowMs / 1_000f
+    axisLeft.apply {
+        applyScale(scale)
+        granularity = scale.step.toFloat()
+        setLabelCount(scale.ticks.size, false)
+        valueFormatter = object : ValueFormatter() {
+            override fun getFormattedValue(value: Float) = scale.label(value.toDouble())
+        }
+        textColor = colors.labels
+        gridColor = colors.grid
+    }
+    val segments = recent.segments(GAP_MS)
+    data = trendData(segments, startMs, colors.line, colors.highlight, selected ?: recent.last(), colors.line, colors.ring)
+    // Les données changent sous le doigt : le trait reste sur la lecture choisie.
+    val segment = selected?.let { s -> segments.indexOfFirst { s in it } } ?: -1
+    if (selected != null && segment >= 0) highlightValue(selected.toEntry(startMs).x, segment, false) else highlightValue(null, false)
+}
+
+/** Couleurs ARGB de la courbe : ligne et point, anneau (fond de la carte), graduations, grille, trait de lecture. */
+data class WindowColors(val line: Int, val ring: Int, val labels: Int, val grid: Int, val highlight: Int)
+
+// --- Jauge : position dans la plage usuelle du PID ---------------------------------------
+
+/** Anneau de 240° ouvert vers le bas, comme un compteur ; le cercle est centré dans la vue. */
+fun PieChart.setupGauge() {
+    setupCommon()
+    setTouchEnabled(false)
+    rotationAngle = GAUGE_START_DEGREES
+    maxAngle = GAUGE_SWEEP_DEGREES
+    holeRadius = GAUGE_HOLE_PERCENT
+    transparentCircleRadius = 0f
+    setHoleColor(Color.TRANSPARENT)
+    setDrawEntryLabels(false)
+    setDrawCenterText(false)
+    minOffset = 0f
+}
+
+/** [value] dans [range] ; plage de part et d'autre de zéro (corrections de mélange) : remplissage depuis zéro. */
+fun PieChart.showGauge(range: ClosedFloatingPointRange<Double>, value: Double?, trackColor: Int, fillColor: Int) {
+    val slices = if (value == null) {
+        listOf(1f to trackColor)
+    } else {
+        fun fraction(v: Double) = ((v - range.start) / (range.endInclusive - range.start)).coerceIn(0.0, 1.0).toFloat()
+        val origin = if (range.start < 0 && range.endInclusive > 0) fraction(0.0) else 0f
+        val current = fraction(value)
+        listOf(min(origin, current) to trackColor, abs(current - origin) to fillColor, 1 - max(origin, current) to trackColor)
+    }
+    data = PieData(
+        PieDataSet(slices.map { PieEntry(it.first) }, null).apply {
+            colors = slices.map { it.second }
+            setDrawValues(false)
+            sliceSpace = 0f
+            selectionShift = 0f
+        },
+    )
+    invalidate()
+}
