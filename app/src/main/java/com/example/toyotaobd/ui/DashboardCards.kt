@@ -294,7 +294,7 @@ private fun GaugeContent(pid: Pid, value: Double?, text: String) {
     }
 }
 
-private fun boundLabel(value: Double): String = if (value % 1.0 == 0.0) "%.0f".format(value) else "%.1f".format(value)
+internal fun boundLabel(value: Double): String = if (value % 1.0 == 0.0) "%.0f".format(value) else "%.1f".format(value)
 
 // --- Volant : l'angle du volant fait tourner un volant dessiné ---------------------------
 

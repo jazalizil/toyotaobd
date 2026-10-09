@@ -2,6 +2,7 @@ package com.example.toyotaobd.car
 
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import androidx.car.app.AppManager
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
@@ -25,6 +26,11 @@ class ObdCarAppService : CarAppService() {
         }
 
     override fun onCreateSession(): Session = object : Session() {
-        override fun onCreateScreen(intent: Intent): Screen = ConnectionCarScreen(carContext)
+        override fun onCreateScreen(intent: Intent): Screen {
+            // Une surface par session, enregistrée dès le départ : le tableau de bord y dessine à chaque connexion.
+            val surface = CarSurface(carContext)
+            carContext.getCarService(AppManager::class.java).setSurfaceCallback(surface)
+            return ConnectionCarScreen(carContext, surface)
+        }
     }
 }

@@ -153,7 +153,7 @@ object Pids {
      * PIDs affichés sur le tableau de bord, dans l'ordre d'affichage : infos principales, hybrides,
      * puis thermiques (ordre du widget). Seuls ceux auxquels le véhicule répond sont affichés.
      */
-    val DASHBOARD = MAIN + HYBRID + ENGINE
+    val DASHBOARD = MAIN + (HYBRID - MAIN.toSet()) + ENGINE
 
     /**
      * Décode la réponse à `0100`, `0120`, ... : 4 octets dont chaque bit indique si le PID

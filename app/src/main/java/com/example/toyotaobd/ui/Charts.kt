@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.view.MotionEvent
 import android.view.View
 import androidx.annotation.MainThread
+import androidx.core.graphics.withScale
 import com.example.toyotaobd.session.Sample
 import com.example.toyotaobd.session.segments
 import com.github.mikephil.charting.charts.Chart
@@ -24,10 +25,10 @@ import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.ChartTouchListener
 import com.github.mikephil.charting.listener.OnChartGestureListener
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 // Graphiques MPAndroidChart du tableau de bord et du widget. Les abscisses sont en secondes depuis
 // le début de la courbe : un Float ne garde pas les millisecondes d'une horloge qui compte depuis le démarrage.
@@ -262,6 +263,77 @@ fun LineChart.showWindow(
 /** Couleurs ARGB de la courbe : ligne et point, anneau (fond de la carte), graduations, grille, trait de lecture. */
 data class WindowColors(val line: Int, val ring: Int, val labels: Int, val grid: Int, val highlight: Int)
 
+/** Mise en page de [WindowRenderer] au plus, en px : nombre de pixels et côté. */
+private const val MAX_LAYOUT_PIXELS = 4_000_000f
+private const val MAX_LAYOUT_SIDE = 8_000f
+
+/**
+ * Courbe graduée dessinée hors écran, pour la surface d'Android Auto : mise en page en dp de
+ * [context], puis mise à l'échelle de l'écran qui l'affiche. [context] : celui de l'application, car
+ * MPAndroidChart garde la densité du dernier contexte reçu pour tous ses graphiques (celui de la
+ * voiture fausserait les marges des courbes du téléphone).
+ * Sur le thread principal : le graphique crée un Handler.
+ */
+@MainThread
+class WindowRenderer(context: Context, labelSizeDp: Float, private val colors: WindowColors) {
+    private val density = context.resources.displayMetrics.density
+    private val chart = LineChart(context).apply {
+        setupWindow(labelSizeDp) {}
+        setTouchEnabled(false)
+        getPaint(Chart.PAINT_INFO).textSize = labelSizeDp * density // « En attente de valeurs… »
+    }
+
+    /**
+     * Lectures [recent] de [startMs] à [startMs] + [windowMs] (voir [showWindow]), dessinées dans
+     * [canvas] sur [width] × [height] px depuis son origine. [canvasDensity] : densité de l'écran qui
+     * l'affiche (graduations à la même taille en dp que sur le téléphone).
+     */
+    fun draw(canvas: Canvas, recent: List<Sample>, scale: ChartScale?, startMs: Long, windowMs: Long, width: Int, height: Int, canvasDensity: Float) {
+        val factor = chart.fitTo(width, height, density, canvasDensity)
+        chart.showWindow(recent, scale, startMs, windowMs, selected = null, colors)
+        canvas.withScale(factor, factor) { chart.draw(this) }
+    }
+}
+
+/**
+ * Tendance d'une carte « Valeur » dessinée hors écran, pour la surface d'Android Auto, comme
+ * [WindowRenderer] (même remarque sur [context]) : ligne [lineColor], dernière lecture en [dotColor]
+ * entourée d'un anneau [ringColor] (fond de la carte).
+ * Sur le thread principal : le graphique crée un Handler.
+ */
+@MainThread
+class SparklineCanvasRenderer(context: Context, insetDp: Float, private val lineColor: Int, private val dotColor: Int, private val ringColor: Int) {
+    private val density = context.resources.displayMetrics.density
+    private val chart = LineChart(context).apply { setupSparkline(insetDp) }
+
+    /** Lectures [samples] (voir [showSparkline]) dessinées dans [canvas] sur [width] × [height] px ; moins de deux lectures : rien. */
+    fun draw(canvas: Canvas, samples: List<Sample>, range: ClosedFloatingPointRange<Double>, width: Int, height: Int, canvasDensity: Float) {
+        if (samples.size < 2 || width <= 0 || height <= 0) return
+        val factor = chart.fitTo(width, height, density, canvasDensity)
+        chart.showSparkline(samples, range, lineColor, dotColor, ringColor)
+        canvas.withScale(factor, factor) { chart.draw(this) }
+    }
+}
+
+/**
+ * Met en page le graphique, en dp d'un écran de densité [density], pour [width] × [height] px d'un
+ * écran de densité [canvasDensity] ; renvoie l'échelle à appliquer au dessin. À appeler avant de
+ * donner les données : le graphique en a besoin pour placer la courbe.
+ */
+private fun LineChart.fitTo(width: Int, height: Int, density: Float, canvasDensity: Float): Float {
+    // Mise en page bornée : MPAndroidChart dessine la courbe dans une image de sa taille et ignore
+    // une dimension de 10 000 px ou plus. Au-delà (écran large et peu dense), les graduations grossissent.
+    val factor = maxOf(canvasDensity / density, sqrt(width * height / MAX_LAYOUT_PIXELS), width / MAX_LAYOUT_SIDE, height / MAX_LAYOUT_SIDE)
+    val chartWidth = max(1, (width / factor).roundToInt())
+    val chartHeight = max(1, (height / factor).roundToInt())
+    if (this.width != chartWidth || this.height != chartHeight) {
+        // Taille fixée à la main : sans mise en page, le graphique ne connaît pas ses dimensions.
+        measure(View.MeasureSpec.makeMeasureSpec(chartWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(chartHeight, View.MeasureSpec.EXACTLY))
+        layout(0, 0, chartWidth, chartHeight)
+    }
+    return factor
+}
+
 // --- Jauge : position dans la plage usuelle du PID ---------------------------------------
 
 /** Anneau de 240° ouvert vers le bas, comme un compteur ; le cercle est centré dans la vue. */
@@ -278,15 +350,24 @@ fun PieChart.setupGauge() {
     minOffset = 0f
 }
 
-/** [value] dans [range] ; plage de part et d'autre de zéro (corrections de mélange) : remplissage depuis zéro. */
+/**
+ * Partie remplie de la jauge pour [value] dans [range], en fractions de l'anneau (0 : début, 1 : fin) ;
+ * plage de part et d'autre de zéro (corrections de mélange) : remplissage depuis zéro.
+ */
+fun gaugeFill(range: ClosedFloatingPointRange<Double>, value: Double): ClosedFloatingPointRange<Float> {
+    fun fraction(v: Double) = ((v - range.start) / (range.endInclusive - range.start)).coerceIn(0.0, 1.0).toFloat()
+    val origin = if (range.start < 0 && range.endInclusive > 0) fraction(0.0) else 0f
+    val current = fraction(value)
+    return min(origin, current)..max(origin, current)
+}
+
+/** [value] dans [range], remplie selon [gaugeFill]. */
 fun PieChart.showGauge(range: ClosedFloatingPointRange<Double>, value: Double?, trackColor: Int, fillColor: Int) {
     val slices = if (value == null) {
         listOf(1f to trackColor)
     } else {
-        fun fraction(v: Double) = ((v - range.start) / (range.endInclusive - range.start)).coerceIn(0.0, 1.0).toFloat()
-        val origin = if (range.start < 0 && range.endInclusive > 0) fraction(0.0) else 0f
-        val current = fraction(value)
-        listOf(min(origin, current) to trackColor, abs(current - origin) to fillColor, 1 - max(origin, current) to trackColor)
+        val fill = gaugeFill(range, value)
+        listOf(fill.start to trackColor, fill.endInclusive - fill.start to fillColor, 1 - fill.endInclusive to trackColor)
     }
     data = PieData(
         PieDataSet(slices.map { PieEntry(it.first) }, null).apply {

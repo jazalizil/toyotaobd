@@ -156,7 +156,7 @@ fun DashboardScreen(vm: ObdViewModel, info: VehicleInfo) {
 }
 
 /** Lecture la plus récente, arrondie à la seconde supérieure (toutes les valeurs restent à gauche du bord). */
-private fun chartEndMs(history: Map<Int, List<Sample>>): Long {
+internal fun chartEndMs(history: Map<Int, List<Sample>>): Long {
     val latest = history.values.mapNotNull { it.lastOrNull()?.timeMs }.maxOrNull() ?: return 0L
     return (latest / 1_000 + 1) * 1_000
 }

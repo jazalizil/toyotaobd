@@ -109,27 +109,36 @@ applications tierces : en voiture, utilisez plutôt l'application Android Auto c
 
 L'application s'affiche aussi sur l'écran de la voiture, avec l'[Android for Cars App
 Library](https://developer.android.com/training/cars/apps) (version 1.7.0). Android Auto n'affiche
-que des gabarits imposés (listes, onglets, messages), pas les écrans du téléphone :
+que des gabarits imposés (listes, messages, navigation), pas les écrans du téléphone ; seul le
+gabarit de navigation laisse l'application dessiner elle-même, sur la surface derrière lui :
 
 - **Non connecté** : un message et le bouton « Choisir l'adaptateur » (adaptateurs appairés au
   téléphone, puis simulateurs des builds debug). La connexion se lance depuis la voiture ; les
   autorisations Bluetooth, elles, se donnent sur le téléphone.
-- **Connecté** : un onglet par section (principales, hybrides, thermiques). Chaque onglet est un
-  **carrousel** de ses valeurs : une seule à la fois, en plein écran, et deux flèches (← →) pour
-  passer à la précédente ou à la suivante (on fait le tour). L'écran d'une valeur montre son nom, sa
-  valeur en grand et sa courbe sur la durée des courbes du tableau de bord (le volant tourné pour
-  l'angle du volant), et à côté : valeur actuelle et position (« 3/14 »), minimum et maximum datés,
-  moyenne pondérée par le temps sur cette durée. Le carrousel suit l'ordre et les cartes affichées
-  du tableau de bord (« Personnaliser » sur le téléphone) ; chaque onglet retient sa valeur, même
-  si une carte est masquée ou déplacée. Les valeurs se rafraîchissent au plus toutes les 2 s, sans
-  faire bouger l'écran (un panneau ne défile pas).
-- Hôtes plus anciens : sans onglets (API voiture < 6), un seul carrousel de toutes les valeurs ;
-  sans image (API < 4), le détail seul.
+- **Connecté** : un onglet par section du tableau de bord (principales, hybrides, thermiques),
+  sous forme de boutons dans la barre du haut (celui de la section affichée sur fond bleu, hôte en
+  API voiture 4 ou plus) ; une section dont toutes les cartes sont masquées n'a pas d'onglet.
+  Chaque onglet est un
+  **carrousel** dessiné sur la surface : **4 cartes au plus par écran** (une seule occupe tout
+  l'écran, deux sont empilées sur toute la largeur, trois ou quatre forment une grille de 2 × 2),
+  chacune sous la forme qu'elle a dans le tableau de bord par défaut, quelle que soit celle choisie
+  sur le téléphone : courbe MPAndroidChart (graduée, sur la durée des courbes du tableau de bord),
+  jauge, volant pour l'angle du volant, ou lecture en grand au-dessus de sa tendance ; dessous en
+  petit, son nom (et sa lecture, sous une courbe ou un volant). Les deux flèches (← →), dans la
+  barre de la carte, passent à la page précédente ou suivante (on fait le tour). Le carrousel suit l'ordre et les cartes
+  affichées du tableau de bord (« Personnaliser » sur le téléphone) ; toucher un onglet ramène à
+  sa première page.
+  Les valeurs se rafraîchissent au plus toutes les 2 s.
+- Pas de vrais onglets Android Auto : ceux-ci peignent un fond opaque par-dessus la surface (essayé
+  sur un hôte en API voiture 8). Avec une seule section, ou sur un hôte en API < 2, un seul
+  carrousel de toutes les valeurs, les flèches dans la barre du haut.
 
 **Catégorie et installation.** Android Auto n'accepte que certaines catégories d'applications
 (navigation, points d'intérêt, IoT, météo...) ; aucune ne correspond au diagnostic OBD.
-L'application se déclare « IoT » (appareils connectés), la plus proche : c'est adapté à un usage
-personnel, pas à une publication sur Google Play telle quelle. Pour l'afficher dans la voiture :
+L'application se déclare « navigation », la seule qui donne accès à la surface (permissions
+`NAVIGATION_TEMPLATES` et `ACCESS_SURFACE`) : Android Auto la range donc avec les applications de
+navigation (lanceur, emplacement de la carte en écran partagé). C'est adapté à un usage personnel,
+pas à une publication sur Google Play telle quelle. Pour l'afficher dans la voiture :
 
 1. Android Auto sur le téléphone : Réglages > Android Auto > toucher dix fois « Version » pour
    activer le mode développeur, puis menu ⋮ > Paramètres pour les développeurs > cocher
@@ -203,7 +212,7 @@ app/src/main/java/com/example/toyotaobd/
 ├── session/          ObdSession : connexion, interrogation en continu, historique, console (Kotlin pur)
 ├── service/          service de premier plan et action « Déconnecter »
 ├── widget/           widget Glance et calcul de sa grille
-├── car/              Android Auto : service, tableau de bord et choix de l'adaptateur (gabarits)
+├── car/              Android Auto : service, tableau de bord (surface) et choix de l'adaptateur (gabarits)
 ├── data/             PID personnalisés, disposition du tableau de bord et leur sauvegarde
 ├── dev/              SimulatedDevice (la liste vient de DevDevices, par variante)
 └── ui/               ViewModel, écrans Compose, cartes du tableau de bord, graphiques MPAndroidChart (Charts.kt)
@@ -238,9 +247,8 @@ hybride (7EA) répondent tous les deux aux requêtes de diffusion.
 - **Android Auto** : essayé sur un hôte en API voiture 8. L'hôte limite une tâche à 5 gabarits :
   le tableau de bord est empilé pendant la connexion puis retiré, et le message de connexion ne
   change pas d'une étape à l'autre : connexions et déconnexions répétées n'épuisent pas ce quota.
-  Le carrousel garde les mêmes titres de lignes pour toutes les valeurs (le nom est dans le texte
-  et l'image) afin qu'une flèche ne soit qu'un rafraîchissement ; il n'a pas encore été essayé dans
-  Android Auto (ni DHU ni voiture) : si l'hôte ferme l'application après quelques flèches, c'est
-  ce quota.
+  Dans le carrousel, une flèche ou une nouvelle lecture ne fait que redessiner la surface, sans
+  nouveau gabarit, et changer d'onglet n'est qu'un rafraîchissement (le gabarit de navigation
+  prend tout changement pour un rafraîchissement).
 - Sans l'autorisation Bluetooth (simulateur en debug sur Android 14+), le service de premier plan
   n'est pas démarré : la connexion vit tant que le processus de l'application vit.

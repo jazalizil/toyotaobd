@@ -25,6 +25,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Android Auto : gabarit de navigation et surface sur laquelle l'application dessine le tableau de bord. -->
+    <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+
     <uses-feature
         android:name="android.hardware.bluetooth"
         android:required="true" />
@@ -55,9 +59,10 @@
             android:name=".service.DisconnectReceiver"
             android:exported="false" />
 
-        <!-- Android Auto : application à gabarits (Android for Cars App Library). Catégorie « IoT »
-             (appareils connectés), la plus proche d'un tableau de bord OBD parmi celles qu'accepte
-             l'hôte ; usage personnel, via « Sources inconnues » du mode développeur d'Android Auto. -->
+        <!-- Android Auto : application à gabarits (Android for Cars App Library). Catégorie
+             « navigation », la seule qui donne accès à la surface : le tableau de bord y dessine sa
+             courbe sur toute la largeur de l'écran. Usage personnel, via « Sources inconnues » du
+             mode développeur d'Android Auto. -->
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
@@ -70,7 +75,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.IOT" />
+                <category android:name="androidx.car.app.category.NAVIGATION" />
             </intent-filter>
         </service>
 

@@ -4,10 +4,10 @@ import com.example.toyotaobd.data.CardStyle
 import com.example.toyotaobd.data.DashboardCard
 import com.example.toyotaobd.data.DashboardLayout
 import com.example.toyotaobd.data.DashboardSection
+import com.example.toyotaobd.obd.Pid
 import com.example.toyotaobd.obd.Pids
 import com.example.toyotaobd.obd.ToyotaHybrid
 import com.example.toyotaobd.session.LiveState
-import com.example.toyotaobd.session.Sample
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,70 +19,79 @@ class CarRowsTest {
         values = mapOf(Pids.RPM.code to 1980.0, Pids.SPEED.code to null, Pids.COOLANT_TEMP.code to 82.0),
     )
 
-    private fun rows(layout: DashboardLayout, section: DashboardSection, max: Int = 6) = carRows(layout, live, section, max)
-
     @Test
-    fun `rows follow the phone dashboard and show value, n-d or waiting`() {
+    fun `rows cover every section of the phone dashboard and show value, n-d or waiting`() {
         assertEquals(
             listOf(
-                CarRow(Pids.RPM.code, "Régime moteur", "1980 tr/min"),
-                CarRow(Pids.SPEED.code, "Vitesse", "n/d"), // lue, sans réponse
-                CarRow(Pids.HYBRID_BATTERY.code, "Charge batterie hybride", "…"), // pas encore lue
-                CarRow(ToyotaHybrid.HV_POWER.code, "Puissance batterie HV", "…"),
+                CarRow(Pids.RPM.code, "Régime moteur", "1980 tr/min", CardStyle.GAUGE),
+                CarRow(Pids.SPEED.code, "Vitesse", "n/d", CardStyle.VALUE), // lue, sans réponse
+                CarRow(Pids.HYBRID_BATTERY.code, "Charge batterie hybride", "…", CardStyle.GAUGE), // pas encore lue
+                CarRow(ToyotaHybrid.HV_POWER.code, "Puissance batterie HV", "…", CardStyle.VALUE),
+                CarRow(Pids.COOLANT_TEMP.code, "Liquide de refroidissement", "82 °C", CardStyle.GAUGE), // infos thermiques, à la suite
             ),
-            rows(DashboardLayout.DEFAULT, DashboardSection.MAIN),
+            carRows(DashboardLayout.DEFAULT, live),
         )
-        assertEquals(listOf("82 °C"), rows(DashboardLayout.DEFAULT, DashboardSection.ENGINE).map { it.text })
-        assertEquals(emptyList<CarRow>(), rows(DashboardLayout.DEFAULT, DashboardSection.HYBRID))
     }
 
     @Test
-    fun `user order and hidden cards apply, within the car list limit`() {
+    fun `user order and hidden cards apply, sections stay in order`() {
         val layout = DashboardLayout(
             listOf(
+                DashboardCard(Pids.COOLANT_TEMP.code, CardStyle.GAUGE),
                 DashboardCard(ToyotaHybrid.HV_POWER.code, CardStyle.LINE),
                 DashboardCard(Pids.RPM.code, CardStyle.VALUE),
                 DashboardCard(Pids.SPEED.code, CardStyle.VALUE),
             ),
         )
         assertEquals(
-            listOf(ToyotaHybrid.HV_POWER.code, Pids.RPM.code, Pids.SPEED.code),
-            rows(layout, DashboardSection.MAIN).map { it.code },
+            listOf(ToyotaHybrid.HV_POWER.code, Pids.RPM.code, Pids.SPEED.code, Pids.COOLANT_TEMP.code),
+            carRows(layout, live).map { it.code },
         )
-        assertEquals(listOf(ToyotaHybrid.HV_POWER.code), rows(layout, DashboardSection.MAIN, max = 1).map { it.code })
-        assertEquals(emptyList<CarRow>(), rows(layout, DashboardSection.MAIN, max = 0))
+        assertEquals(emptyList<CarRow>(), carRows(DashboardLayout(emptyList()), live))
     }
 
     @Test
-    fun `carousel rows have the same titles for every value, with or without readings`() {
-        val samples = listOf(Sample(0, 750.0), Sample(1_000, 2_000.0), Sample(2_000, 1_000.0))
-        for (pid in Pids.DASHBOARD) {
-            for (history in listOf(emptyList(), samples)) {
-                val rows = carDetailRows(pid, live, history, windowMinutes = 5, position = 0, count = 3)
-                assertEquals(pid.name, CAR_DETAIL_TITLES, rows.map { it.title })
-            }
-        }
+    fun `cards take the style of the default dashboard, or their own outside of it`() {
+        val custom = Pid(0x1F00, "Valeur constructeur", "", 1, range = 0.0..1.0)
+        val layout = DashboardLayout(
+            listOf(
+                DashboardCard(Pids.RPM.code, CardStyle.LINE),
+                DashboardCard(Pids.SPEED.code, CardStyle.GAUGE),
+                DashboardCard(custom.code, CardStyle.LINE),
+            ),
+        )
+        assertEquals(
+            listOf(CardStyle.GAUGE, CardStyle.VALUE, CardStyle.LINE),
+            carRows(layout, live.copy(pids = live.pids + custom)).map { it.style },
+        )
     }
 
     @Test
-    fun `carousel rows show the value, its name and position, then dated extremes and the mean`() {
-        val samples = listOf(Sample(0, 750.0), Sample(1_000, 2_000.0), Sample(3_000, 1_000.0))
-        val rows = carDetailRows(Pids.RPM, live, samples, windowMinutes = 5, position = 1, count = 7)
-        assertEquals(listOf("1980 tr/min", "Régime moteur · 2/7"), rows[0].texts)
-        assertEquals(listOf("750 tr/min · il y a 3 s"), rows[1].texts)
-        assertEquals(listOf("2000 tr/min · il y a 2 s"), rows[2].texts)
-        assertEquals(listOf("1583 tr/min", "sur 5 min"), rows[3].texts) // (750 × 1 s + 2000 × 2 s) / 3 s
-        // Pas encore de lecture : la ligne reste, avec « … ».
-        val empty = carDetailRows(Pids.HYBRID_BATTERY, live, emptyList(), windowMinutes = 5, position = 0, count = 1)
-        assertEquals(listOf("…", "Charge batterie hybride · 1/1"), empty[0].texts)
-        assertEquals(listOf("…"), empty[1].texts)
+    fun `a section keeps only its own cards`() {
+        assertEquals(
+            listOf(Pids.RPM.code, Pids.SPEED.code, Pids.HYBRID_BATTERY.code, ToyotaHybrid.HV_POWER.code),
+            carRows(DashboardLayout.DEFAULT, live, DashboardSection.MAIN).map { it.code },
+        )
+        assertEquals(listOf("82 °C"), carRows(DashboardLayout.DEFAULT, live, DashboardSection.ENGINE).map { it.text })
+        assertEquals(emptyList<CarRow>(), carRows(DashboardLayout.DEFAULT, live, DashboardSection.HYBRID))
     }
 
     @Test
-    fun `carousel image is sized in dp and capped for the host link`() {
-        assertEquals(360 to 240, carImageSize(density = 1f))
-        val (width, height) = carImageSize(density = 2.5f)
-        assertTrue(width * height <= 150_000)
-        assertEquals(1.5, width / height.toDouble(), 0.01) // proportions gardées
+    fun `one card fills the area, two are stacked, three or four form a 2x2 grid`() {
+        // Zone utile de 1920 × 720 px sous les onglets, écran à 2 px par dp (marges 32 px), ligne de 50 px.
+        fun grid(cells: Int) = carGrid(cells, left = 0, top = 100, right = 1920, bottom = 820, density = 2f, lineHeight = 50f)
+        assertEquals(listOf(CarFrame(left = 32, right = 1888, chartTop = 132, chartBottom = 722, textBottom = 788)), grid(1))
+        assertEquals(
+            listOf(CarFrame(32, 1888, 132, 378, 444), CarFrame(32, 1888, 476, 722, 788)),
+            grid(2),
+        )
+        val four = listOf(
+            CarFrame(32, 944, 132, 378, 444), CarFrame(976, 1888, 132, 378, 444),
+            CarFrame(32, 944, 476, 722, 788), CarFrame(976, 1888, 476, 722, 788),
+        )
+        assertEquals(four, grid(4))
+        assertEquals(four.take(3), grid(3)) // même grille : la dernière page d'une section ne se réarrange pas
+        assertEquals(four, grid(9))
+        assertEquals(emptyList<CarFrame>(), grid(0))
     }
 }

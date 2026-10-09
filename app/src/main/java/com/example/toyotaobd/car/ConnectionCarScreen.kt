@@ -18,14 +18,14 @@ import kotlinx.coroutines.launch
 /**
  * Premier écran Android Auto : « non connecté » et choix de l'adaptateur. Dès qu'une connexion
  * commence (depuis la voiture ou le téléphone), il empile [DashboardCarScreen], qui se retire à la
- * déconnexion.
+ * déconnexion et dessine sur [surface].
  *
  * Pourquoi deux écrans : l'hôte limite une tâche à 5 gabarits et seuls les rafraîchissements (même
  * contenu principal) n'en consomment pas ; revenir à un écran rend les gabarits de ceux qu'on quitte.
  * Ainsi la pile ne dépasse jamais 3 gabarits, quel que soit le nombre de connexions et déconnexions.
  * Au retour, l'écran doit renvoyer le même type de gabarit qu'avant : toujours un message ici.
  */
-class ConnectionCarScreen(carContext: CarContext) : Screen(carContext) {
+internal class ConnectionCarScreen(carContext: CarContext, private val surface: CarSurface) : Screen(carContext) {
 
     private val session = carContext.obdSession
 
@@ -38,7 +38,7 @@ class ConnectionCarScreen(carContext: CarContext) : Screen(carContext) {
                     .distinctUntilChanged()
                     .collect { (_, disconnected) ->
                         if (!disconnected) {
-                            if (screenManager.top === this@ConnectionCarScreen) screenManager.push(DashboardCarScreen(carContext))
+                            if (screenManager.top === this@ConnectionCarScreen) screenManager.push(DashboardCarScreen(carContext, surface))
                         } else {
                             invalidate()
                         }

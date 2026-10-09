@@ -1,172 +1,223 @@
 package com.example.toyotaobd.car
 
-import android.graphics.Bitmap
 import android.util.Log
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.Action
+import androidx.car.app.model.ActionStrip
+import androidx.car.app.model.CarColor
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.MessageTemplate
-import androidx.car.app.model.Pane
-import androidx.car.app.model.PaneTemplate
-import androidx.car.app.model.Tab
-import androidx.car.app.model.TabContents
-import androidx.car.app.model.TabTemplate
 import androidx.car.app.model.Template
+import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.car.app.versioning.CarAppApiLevels
 import androidx.core.graphics.drawable.IconCompat
+import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.toyotaobd.R
 import com.example.toyotaobd.data.DashboardSection
 import com.example.toyotaobd.data.DashboardStore
-import com.example.toyotaobd.obd.Pid
 import com.example.toyotaobd.obdSession
 import com.example.toyotaobd.session.ConnectionState
 import com.example.toyotaobd.session.LiveState
-import com.example.toyotaobd.session.Sample
 import com.example.toyotaobd.session.atMostEvery
+import com.example.toyotaobd.ui.chartEndMs
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
  * Tableau de bord sur l'écran de la voiture, empilé par [ConnectionCarScreen] pendant une connexion :
- * un message fixe pendant la connexion, puis un onglet par section (infos principales, hybrides,
- * thermiques). Chaque onglet est un carrousel : une valeur à la fois, en plein écran avec son détail
- * ([carDetailRows], [pidImage]), et deux flèches pour passer à la précédente ou à la suivante. Il se
- * retire à la déconnexion.
+ * un message fixe pendant la connexion, puis un onglet par section du tableau de bord (infos
+ * principales, hybrides, thermiques). Chaque onglet est un carrousel dessiné sur la surface
+ * ([CarSurface]) : au plus [CARDS_PER_PAGE] cartes à la fois, chacune sous la forme qu'elle a dans le
+ * tableau de bord par défaut (courbe, jauge, volant ou valeur, voir [carRows]) avec son nom et sa
+ * lecture, et deux flèches pour passer à la page précédente ou suivante. Il se retire à la
+ * déconnexion.
  *
- * Quota de l'hôte (5 gabarits par tâche) : changer d'onglet, de valeur (mêmes titres de lignes pour
- * toutes) ou rafraîchir les lectures n'en consomme pas, et le message de connexion ne change pas
- * d'une étape à l'autre.
+ * Onglets : des boutons dans la barre d'actions du gabarit de navigation (celui de la section
+ * affichée sur fond de couleur), les flèches dans celle de la carte ; toucher un onglet ramène son
+ * carrousel à la première page. Les vrais onglets d'Android Auto
+ * ([androidx.car.app.model.TabTemplate]) peignent un fond opaque sur la surface (essayé sur un hôte
+ * en API 8). Une seule section, ou un hôte en API < 2 (sans barre de la carte) : un seul carrousel
+ * de toutes les valeurs, les flèches dans la barre d'actions.
+ *
+ * Quota de l'hôte (5 gabarits par tâche) : changer d'onglet, de page ou rafraîchir les lectures n'en
+ * consomme pas (le gabarit de navigation prend tout changement pour un rafraîchissement, et seule la
+ * surface est redessinée), et le message de connexion ne change pas d'une étape à l'autre.
  */
-class DashboardCarScreen(carContext: CarContext) : Screen(carContext) {
+internal class DashboardCarScreen(carContext: CarContext, private val surface: CarSurface) : Screen(carContext) {
+
+    /** Gabarit à montrer : seul un changement d'état en demande un nouveau à l'hôte. */
+    private sealed interface Display {
+        data class Connecting(val deviceName: String) : Display
+        data class Message(val title: String, val text: String) : Display
+
+        /** Carrousel de la section [active], avec un onglet par section de [tabs] ; sans onglets ([active] null) : toutes les valeurs. */
+        data class Carousel(val tabs: List<DashboardSection>, val active: DashboardSection?) : Display
+    }
 
     private val session = carContext.obdSession
     private val dashboardStore = DashboardStore(carContext)
     private var activeSection = DashboardSection.MAIN
 
-    /** Valeur affichée par chaque onglet (code du PID : une carte masquée ou déplacée ne décale rien). */
-    private val currentCode = mutableMapOf<DashboardSection, Int>()
-    private var imageSizeLogged = false
+    /** Page affichée par le carrousel, remise à la première à chaque onglet touché. */
+    private var pageIndex = 0
+
+    /** Dernier gabarit renvoyé à l'hôte. */
+    private var shown: Display? = null
 
     init {
         Log.i(TAG, "API voiture de l'hôte : ${carContext.carAppApiLevel}")
+        surface.content = ::page
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onDestroy(owner: LifecycleOwner) {
+                surface.content = null
+            }
+        })
         // Changement d'état aussitôt (les étapes de la connexion sont ignorées), valeurs au plus
-        // toutes les 2 s (l'hôte limite lui-même la cadence).
+        // toutes les 2 s : nouveau gabarit si l'état change, sinon la surface seule est redessinée.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                combine(session.connection, session.live.atMostEvery(REFRESH_MS)) { connection, live ->
-                    when (connection) {
-                        is ConnectionState.Disconnected -> null
-                        is ConnectionState.Connecting -> connection.deviceName
-                        is ConnectionState.Connected -> connection.deviceName to live
+                combine(session.connection, session.live.atMostEvery(REFRESH_MS), ::display).collect { display ->
+                    when (display) {
+                        null -> finish()
+                        shown -> surface.redraw()
+                        else -> invalidate()
                     }
                 }
-                    .distinctUntilChanged()
-                    .collect { state -> if (state == null) finish() else invalidate() }
             }
         }
     }
 
     @Suppress("DEPRECATION") // setTitle / setHeaderAction : leur remplaçant (Header) exige l'API 7 de l'hôte.
-    override fun onGetTemplate(): Template = when (val connection = session.connection.value) {
-        is ConnectionState.Connected -> dashboard(connection.deviceName, session.live.value)
-        // Déconnecté : l'écran se retire ; en attendant, même message que pendant la connexion.
-        else -> {
-            val name = (connection as? ConnectionState.Connecting)?.deviceName.orEmpty()
-            val message = MessageTemplate.Builder("Connexion à l'adaptateur… Mettez le contact.")
-                .setTitle(name.ifEmpty { carContext.getString(R.string.app_name) })
-                .setHeaderAction(Action.APP_ICON)
-                .addAction(Action.Builder().setTitle("Annuler").setOnClickListener { session.cancelConnection() }.build())
-            if (carContext.carAppApiLevel >= CarAppApiLevels.LEVEL_2) message.setLoading(true)
-            message.build()
+    override fun onGetTemplate(): Template {
+        val display = display(session.connection.value, session.live.value)
+        shown = display
+        surface.redraw()
+        return when (display) {
+            is Display.Carousel -> carousel(display.tabs, display.active)
+
+            is Display.Message -> MessageTemplate.Builder(display.text).setTitle(display.title).setHeaderAction(Action.APP_ICON).build()
+
+            // Déconnecté : l'écran se retire ; en attendant, même message que pendant la connexion.
+            is Display.Connecting, null -> {
+                val name = (display as? Display.Connecting)?.deviceName.orEmpty()
+                val message = MessageTemplate.Builder("Connexion à l'adaptateur… Mettez le contact.")
+                    .setTitle(name.ifEmpty { carContext.getString(R.string.app_name) })
+                    .setHeaderAction(Action.APP_ICON)
+                    .addAction(Action.Builder().setTitle("Annuler").setOnClickListener { session.cancelConnection() }.build())
+                if (carContext.carAppApiLevel >= CarAppApiLevels.LEVEL_2) message.setLoading(true)
+                message.build()
+            }
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun dashboard(deviceName: String, live: LiveState): Template {
-        val tabs = DashboardSection.present(live.pids.map { it.code })
-        if (tabs.isEmpty()) return message(deviceName, "Aucune donnée supportée par le véhicule.")
-        if (activeSection !in tabs) activeSection = tabs.first()
-
-        // Hôte sans onglets (API < 6) ou une seule section : les premières valeurs, toutes sections confondues.
-        if (carContext.carAppApiLevel < CarAppApiLevels.LEVEL_6 || tabs.size < 2) {
-            val pane = carousel(tabs.first(), tabs, live) ?: return message(deviceName, NO_ITEMS)
-            return PaneTemplate.Builder(pane)
-                .setTitle(deviceName)
-                .setHeaderAction(Action.APP_ICON)
-                .build()
-        }
-
-        val template = TabTemplate.Builder(object : TabTemplate.TabCallback {
-            override fun onTabSelected(tabContentId: String) {
-                activeSection = DashboardSection.valueOf(tabContentId)
-                invalidate()
+    /** Null une fois déconnecté (l'écran se retire). */
+    private fun display(connection: ConnectionState, live: LiveState): Display? = when (connection) {
+        is ConnectionState.Disconnected -> null
+        is ConnectionState.Connecting -> Display.Connecting(connection.deviceName)
+        is ConnectionState.Connected -> {
+            // Sections du tableau de bord ayant au moins une carte affichée, dans leur ordre.
+            val sections = dashboardStore.load().bySection(live.pids.mapTo(mutableSetOf()) { it.code }).keys.toList()
+            when {
+                live.pids.isEmpty() -> Display.Message(connection.deviceName, "Aucune donnée supportée par le véhicule.")
+                sections.isEmpty() -> Display.Message(connection.deviceName, NO_ITEMS)
+                carContext.carAppApiLevel < CarAppApiLevels.LEVEL_2 || sections.size < 2 -> Display.Carousel(emptyList(), null)
+                else -> {
+                    if (activeSection !in sections) {
+                        activeSection = sections.first()
+                        pageIndex = 0
+                    }
+                    Display.Carousel(sections, activeSection)
+                }
             }
-        }).setHeaderAction(Action.APP_ICON)
-        for (section in tabs) {
-            template.addTab(Tab.Builder().setTitle(section.tab).setIcon(tabIcon(section)).setContentId(section.name).build())
         }
-        // Contenu d'onglet sans titre ni action d'en-tête (l'hôte les ignorerait).
-        val content = carousel(activeSection, listOf(activeSection), live)?.let { PaneTemplate.Builder(it).build() }
-            ?: MessageTemplate.Builder(NO_ITEMS).build()
-        return template
-            .setTabContents(TabContents.Builder(content).build())
-            .setActiveTabContentId(activeSection.name)
-            .build()
     }
 
     /**
-     * Carrousel des valeurs de [sections] (cartes affichées du tableau de bord, dans leur ordre), dont la
-     * position est retenue sous [key] ; les flèches font le tour. Null s'il n'y a aucune valeur.
+     * Gabarit du carrousel, le même pour toutes les pages : un bouton par section de [tabs] (celui de
+     * [active] en évidence) et les flèches dans la barre de la carte ; sans onglets, les flèches seules.
      */
-    private fun carousel(key: DashboardSection, sections: List<DashboardSection>, live: LiveState): Pane? {
+    private fun carousel(tabs: List<DashboardSection>, active: DashboardSection?): Template {
+        val arrows = ActionStrip.Builder()
+            .addAction(arrow(R.drawable.ic_car_previous) { turn(-1) })
+            .addAction(arrow(R.drawable.ic_car_next) { turn(1) })
+            .build()
+        val template = NavigationTemplate.Builder()
+        if (active == null) return template.setActionStrip(arrows).build()
+        val sections = ActionStrip.Builder()
+        for (section in tabs) sections.addAction(tab(section, selected = section == active))
+        return template.setActionStrip(sections.build()).setMapActionStrip(arrows).build()
+    }
+
+    /**
+     * Bouton d'onglet de [section], qui affiche sa première page ; [selected] : section affichée, sur
+     * fond de couleur. Le gabarit de navigation n'accepte une couleur de fond que sur l'action
+     * principale (API 4 de l'hôte) : en deçà, aucun onglet n'est mis en évidence.
+     */
+    private fun tab(section: DashboardSection, selected: Boolean): Action {
+        val action = Action.Builder()
+            .setTitle(section.tab)
+            .setIcon(tabIcon(section))
+            .setOnClickListener {
+                pageIndex = 0
+                if (activeSection != section) {
+                    activeSection = section
+                    invalidate()
+                } else {
+                    surface.redraw()
+                }
+            }
+        if (selected && carContext.carAppApiLevel >= CarAppApiLevels.LEVEL_4) {
+            action.setFlags(Action.FLAG_PRIMARY).setBackgroundColor(CarColor.BLUE)
+        }
+        return action.build()
+    }
+
+    /** Section du carrousel affiché (null : toutes les valeurs, sans onglets). */
+    private val shownSection: DashboardSection?
+        get() = (shown as? Display.Carousel)?.active
+
+    /**
+     * Page montrée par le carrousel affiché parmi [carRows] (cartes affichées de sa section, dans leur
+     * ordre), par groupes de [CARDS_PER_PAGE] ; null hors carrousel ou sans valeur.
+     */
+    private fun page(): CarPage? {
+        if (shown !is Display.Carousel) return null
+        val section = shownSection
+        val live = session.live.value
         val layout = dashboardStore.load()
-        val byCode = live.pids.associateBy { it.code }
-        val pids = sections.flatMap { carRows(layout, live, it, Int.MAX_VALUE) }.mapNotNull { byCode[it.code] }
-        if (pids.isEmpty()) return null
-        val index = pids.indexOfFirst { it.code == currentCode[key] }.coerceAtLeast(0)
-        val pid = pids[index]
-        currentCode[key] = pid.code
-
-        val samples = session.history.value[pid.code].orEmpty()
-        val rows = carDetailRows(pid, live, samples, layout.windowMinutes, index, pids.size)
-        fun show(offset: Int) {
-            val target = pids[(index + offset).mod(pids.size)]
-            currentCode[key] = target.code
-            Log.i(TAG, "Carrousel ${key.name} : ${target.name} (${pids.indexOf(target) + 1}/${pids.size})")
-            invalidate()
+        val rows = carRows(layout, live, section)
+        if (rows.isEmpty()) return null
+        val groups = rows.chunked(CARDS_PER_PAGE)
+        pageIndex = pageIndex.mod(groups.size)
+        val history = session.history.value
+        val endMs = chartEndMs(history)
+        val slides = groups[pageIndex].map { row ->
+            CarSlide(row, live.pids.first { it.code == row.code }, live.values[row.code], history[row.code].orEmpty(), endMs, layout.windowMinutes)
         }
-        val several = pids.size > 1
-        return carContext.detailPane(rows, image(pid, live, samples, layout.windowMinutes), { show(-1) }.takeIf { several }, { show(1) }.takeIf { several })
+        // Même grille pour toutes les pages de la section : la dernière ne se réarrange pas.
+        return CarPage(slides, rows.size.coerceAtMost(CARDS_PER_PAGE))
     }
 
-    /** Image du carrousel (nom, valeur en grand, courbe ou volant), aux dimensions de l'écran de la voiture. */
-    private fun image(pid: Pid, live: LiveState, samples: List<Sample>, windowMinutes: Int): Bitmap? {
-        if (carContext.carAppApiLevel < CarAppApiLevels.LEVEL_4) return null
-        val density = carContext.resources.displayMetrics.density
-        val (width, height) = carImageSize(density)
-        if (!imageSizeLogged) {
-            imageSizeLogged = true
-            Log.i(TAG, "Image du carrousel : $width × $height px (densité de l'écran $density)")
-        }
-        val value = live.values[pid.code]
-        val text = when {
-            value != null -> pid.format(value)
-            live.values.containsKey(pid.code) -> "n/d"
-            else -> "…"
-        }
-        val last = samples.lastOrNull()?.timeMs
-        val recent = if (last == null) emptyList() else samples.filter { it.timeMs >= last - windowMinutes * 60_000L }
-        return pidImage(pid, text, recent, value, width, height)
+    /** Passe à la page précédente ([offset] = -1) ou suivante (+1) ; les flèches font le tour. */
+    private fun turn(offset: Int) {
+        val section = shownSection
+        val count = carRows(dashboardStore.load(), session.live.value, section).chunked(CARDS_PER_PAGE).size
+        if (count == 0) return
+        pageIndex = (pageIndex + offset).mod(count)
+        Log.i(TAG, "Carrousel ${section?.name ?: "complet"} : page ${pageIndex + 1}/$count")
+        surface.redraw()
     }
 
-    @Suppress("DEPRECATION")
-    private fun message(title: String, text: String): Template =
-        MessageTemplate.Builder(text).setTitle(title).setHeaderAction(Action.APP_ICON).build()
+    private fun arrow(icon: Int, onClick: () -> Unit): Action =
+        Action.Builder()
+            .setIcon(CarIcon.Builder(IconCompat.createWithResource(carContext, icon)).build())
+            .setOnClickListener(onClick)
+            .build()
 
     private fun tabIcon(section: DashboardSection): CarIcon {
         val icon = when (section) {
