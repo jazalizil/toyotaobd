@@ -7,6 +7,8 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.Handler
+import android.os.Looper
 import android.text.TextPaint
 import android.text.TextUtils
 import android.util.DisplayMetrics
@@ -118,6 +120,10 @@ internal class CarSurface(context: Context) : SurfaceCallback {
 
     private var container: SurfaceContainer? = null
 
+    /** File du thread principal, où sont groupés les redessins demandés à l'attache de la surface. */
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var redrawPending = false
+
     /** La surface de [container] refuse le dessin (signalé une fois). */
     private var unavailable = false
     private var visibleArea: Rect? = null
@@ -152,19 +158,35 @@ internal class CarSurface(context: Context) : SurfaceCallback {
         Log.i(TAG, "Surface : ${surfaceContainer.width} × ${surfaceContainer.height} px, ${surfaceContainer.dpi} dpi")
         container = surfaceContainer
         unavailable = false
-        redraw()
+        scheduleRedraw()
     }
 
     override fun onVisibleAreaChanged(visibleArea: Rect) {
         Log.i(TAG, "Zone visible : $visibleArea")
+        if (this.visibleArea == visibleArea) return
         this.visibleArea = Rect(visibleArea)
-        redraw()
+        scheduleRedraw()
     }
 
     override fun onStableAreaChanged(stableArea: Rect) {
         Log.i(TAG, "Zone stable : $stableArea")
+        if (this.stableArea == stableArea) return
         this.stableArea = Rect(stableArea)
-        redraw()
+        scheduleRedraw()
+    }
+
+    /**
+     * Redessine dès que possible, en groupant en un seul dessin les rappels de l'hôte arrivés
+     * ensemble (attachement de la surface : disponible, zones visible et stable) ; [redraw] reste
+     * pour un dessin immédiat (changement de page, de lectures).
+     */
+    private fun scheduleRedraw() {
+        if (redrawPending) return
+        redrawPending = true
+        mainHandler.post {
+            redrawPending = false
+            redraw()
+        }
     }
 
     override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
@@ -173,10 +195,16 @@ internal class CarSurface(context: Context) : SurfaceCallback {
         surfaceContainer.surface?.release()
     }
 
-    /** Redessine la surface avec la page que donne [content] ; sans effet tant que l'hôte n'a pas fourni de surface. */
+    /**
+     * Redessine la surface avec la page que donne [content] (lue avant de verrouiller le canvas :
+     * lecture d'état, sans retenir le dessin) ; sans effet tant que l'hôte n'a pas fourni de surface.
+     */
     fun redraw() {
+        // Surface de l'hôte défectueuse : rien à dessiner tant qu'il n'en fournit pas une autre.
+        if (unavailable) return
         val container = container ?: return
         val surface = container.surface?.takeIf { it.isValid } ?: return
+        val page = content?.invoke()
         val canvas = try {
             surface.lockCanvas(null)
         } catch (e: IllegalArgumentException) {
@@ -188,7 +216,7 @@ internal class CarSurface(context: Context) : SurfaceCallback {
         }
         try {
             canvas.drawColor(Color.BLACK)
-            val page = content?.invoke() ?: return
+            page ?: return
             val density = container.dpi / DisplayMetrics.DENSITY_DEFAULT.toFloat()
             // Zone stable : elle tient compte des boutons même masqués, les courbes ne sautent pas quand ils apparaissent.
             val area = stableArea?.takeUnless { it.isEmpty } ?: visibleArea?.takeUnless { it.isEmpty } ?: Rect(0, 0, container.width, container.height)
@@ -228,7 +256,9 @@ internal class CarSurface(context: Context) : SurfaceCallback {
     private fun drawLine(canvas: Canvas, slide: CarSlide, width: Int, height: Int, density: Float) {
         val windowMs = slide.windowMinutes * 60_000L
         val startMs = slide.endMs - windowMs
-        val recent = slide.samples.filter { it.timeMs >= startMs }
+        // Fenêtre en tranches de la liste (sans copie) : l'historique est chronologique (appendWithin).
+        val first = slide.samples.indexOfFirst { it.timeMs >= startMs }
+        val recent = if (first < 0) emptyList() else slide.samples.subList(first, slide.samples.size)
         val scale = if (recent.isEmpty()) null else ChartScale.of(recent.minOf { it.value }, recent.maxOf { it.value }, slide.pid.range)
         renderer.draw(canvas, recent, scale, startMs, windowMs, width, height, density)
     }
@@ -243,7 +273,8 @@ internal class CarSurface(context: Context) : SurfaceCallback {
         if (slide.value != null) canvas.drawText(" ${slide.pid.unit}", bigPaint.measureText(number), baseline, labelPaint)
 
         val last = slide.samples.lastOrNull()?.timeMs ?: return
-        val recent = slide.samples.filter { it.timeMs >= last - slide.windowMinutes * 60_000L }
+        val first = slide.samples.indexOfFirst { it.timeMs >= last - slide.windowMinutes * 60_000L }
+        val recent = if (first < 0) emptyList() else slide.samples.subList(first, slide.samples.size)
         val top = (big.descent - big.ascent + GAP_DP * density).roundToInt()
         canvas.withTranslation(0f, top.toFloat()) {
             sparkline.draw(this, recent, slide.pid.range, width, height - top, density)

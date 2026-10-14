@@ -70,8 +70,11 @@ class ObdSession(
     private val _console = MutableStateFlow<List<ConsoleLine>>(emptyList())
     val console: StateFlow<List<ConsoleLine>> = _console.asStateFlow()
 
-    /** Interrogation en continu suspendue (console au premier plan). */
+    /** Interrogation en continu suspendue (console au premier plan, éditeur du tableau de bord affiché). */
     private val livePaused = MutableStateFlow(false)
+
+    /** Éditeur du tableau de bord affiché (feuille du téléphone) : voir [enterDashboardEditor]. */
+    private val editorVisible = MutableStateFlow(false)
 
     @Volatile private var elm: Elm327? = null
     @Volatile private var client: ObdClient? = null
@@ -185,6 +188,10 @@ class ObdSession(
                     livePaused.first { !it }
                     continue
                 }
+                if (editorVisible.value) {
+                    editorVisible.first { !it }
+                    continue
+                }
                 // Tension et valeurs lentes (températures...) : un cycle sur cinq, dont le premier.
                 val slowCycle = cycle++ % SLOW_CYCLES == 0
                 if (slowCycle) {
@@ -193,7 +200,7 @@ class ObdSession(
                 val (enhanced, others) = _live.value.pids.partition { it.request != null }
                 val (derived, standard) = others.partition { it.derivation != null }
                 for (pid in standard) {
-                    if (livePaused.value) break
+                    if (livePaused.value || editorVisible.value) break
                     val value = withClient { it.readPid(pid) }.getOrNull()
                     if (client !== owner) return@launch
                     record(pid, value)
@@ -204,7 +211,7 @@ class ObdSession(
                 // un calculateur à la fois. Une requête est envoyée si l'une de ses valeurs est due.
                 val due = enhanced.filter { slowCycle || !it.slow }.mapNotNull { it.request }.toSet()
                 for (pids in enhanced.filter { it.request in due }.groupBy { it.request?.ecu }.values) {
-                    if (livePaused.value) break
+                    if (livePaused.value || editorVisible.value) break
                     val payloads = withClient { it.readEnhancedPayloads(pids.mapNotNull(Pid::request)) }.getOrNull()
                     if (client !== owner) return@launch
                     for (pid in pids) record(pid, payloads?.get(pid.request)?.let(pid::decodeEnhanced))
@@ -257,6 +264,23 @@ class ObdSession(
 
     fun clearConsole() {
         _console.value = emptyList()
+    }
+
+    // --- Éditeur du tableau de bord ------------------------------------------------------
+
+    /**
+     * L'éditeur du tableau de bord est affiché (feuille sur l'écran du téléphone) : l'interrogation
+     * s'arrête, comme pour la console. À chaque lecture, le tableau de bord derrière la feuille
+     * (graphiques MPAndroidChart), le widget et la notification se redessinent sur le fil principal
+     * et rendent son défilement saccadé ; l'éditeur n'affiche pas de valeurs. Refermé, l'interrogation
+     * reprend (les courbes sautent l'interruption, voir [segments]).
+     */
+    fun enterDashboardEditor() {
+        editorVisible.value = true
+    }
+
+    fun leaveDashboardEditor() {
+        editorVisible.value = false
     }
 
     private fun log(direction: Char, text: String) {

@@ -228,6 +228,12 @@ class ObdViewModel(app: Application) : AndroidViewModel(app) {
 
     fun leaveConsole() = session.leaveConsole()
 
+    // --- Éditeur du tableau de bord ------------------------------------------------------
+
+    fun enterDashboardEditor() = session.enterDashboardEditor()
+
+    fun leaveDashboardEditor() = session.leaveDashboardEditor()
+
     fun sendConsole(input: String) = session.sendConsole(input)
 
     fun clearConsole() = session.clearConsole()

@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.toyotaobd.data.DashboardSection
 import com.example.toyotaobd.obd.Pids
@@ -146,6 +147,14 @@ fun DashboardScreen(vm: ObdViewModel, info: VehicleInfo) {
     }
 
     if (editing) {
+        // Interrogation suspendue comme pour la console : à chaque lecture, le tableau de bord derrière
+        // la feuille (cartes MPAndroidChart), le widget et la notification se redessinent sur le fil
+        // principal et rendent son défilement saccadé ; l'éditeur n'affiche pas de valeurs. En
+        // arrière-plan, elle reprend pour le widget et la notification.
+        LifecycleStartEffect(Unit) {
+            vm.enterDashboardEditor()
+            onStopOrDispose { vm.leaveDashboardEditor() }
+        }
         DashboardEditor(
             layout = layout,
             pids = live.pids,
