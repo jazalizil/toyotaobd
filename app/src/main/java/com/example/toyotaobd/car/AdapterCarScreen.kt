@@ -9,7 +9,7 @@ import androidx.car.app.model.ListTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.car.app.versioning.CarAppApiLevels
-import com.example.toyotaobd.bluetooth.BluetoothRepository
+import com.example.toyotaobd.bluetooth.AndroidBluetoothRepository
 import com.example.toyotaobd.dev.DevDevices
 import com.example.toyotaobd.obd.ObdTransport
 import com.example.toyotaobd.obd.ProtocolChoice
@@ -23,7 +23,7 @@ import com.example.toyotaobd.obdSession
 class AdapterCarScreen(carContext: CarContext) : Screen(carContext) {
 
     private val session = carContext.obdSession
-    private val bluetooth = BluetoothRepository(carContext)
+    private val bluetooth = AndroidBluetoothRepository(carContext)
 
     @Suppress("DEPRECATION") // setTitle / setHeaderAction : leur remplaçant (Header) exige l'API 7 de l'hôte.
     override fun onGetTemplate(): Template {

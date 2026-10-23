@@ -7,43 +7,32 @@ import android.graphics.Color
 import android.view.MotionEvent
 import android.view.View
 import androidx.annotation.MainThread
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.withScale
 import com.example.toyotaobd.session.Sample
 import com.example.toyotaobd.session.segments
 import com.github.mikephil.charting.charts.Chart
 import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.charts.PieChart
 import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.data.PieData
-import com.github.mikephil.charting.data.PieDataSet
-import com.github.mikephil.charting.data.PieEntry
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.listener.ChartTouchListener
 import com.github.mikephil.charting.listener.OnChartGestureListener
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-// Graphiques MPAndroidChart du tableau de bord et du widget. Les abscisses sont en secondes depuis
-// le début de la courbe : un Float ne garde pas les millisecondes d'une horloge qui compte depuis le démarrage.
-
-/** Au-delà de cet écart entre deux lectures (console ouverte, PID muet), la courbe est interrompue. */
-internal const val GAP_MS = 15_000L
+// Rendus MPAndroidChart de la surface Android Auto et du widget (le tableau de bord du téléphone
+// dessine ses graphiques en Compose, dans le module partagé). Les abscisses sont en secondes depuis
+// le début de la courbe : un Float ne garde pas les millisecondes d'une horloge qui compte depuis
+// le démarrage. Bornes de jauge, remplissage et couleurs WindowColors viennent du module partagé.
 
 /** Marge au-delà des graduations extrêmes : une ligne posée sur une borne n'est pas coupée de moitié. */
 private const val EDGE_MARGIN = 0.03f
-
-const val GAUGE_START_DEGREES = 150f
-const val GAUGE_SWEEP_DEGREES = 240f
-
-/** Rayon du trou de la jauge, en % du rayon : l'anneau en occupe le reste. */
-const val GAUGE_HOLE_PERCENT = 84f
 
 private fun Sample.toEntry(startMs: Long) = Entry((timeMs - startMs) / 1_000f, value.toFloat())
 
@@ -235,7 +224,7 @@ fun LineChart.showWindow(
     selected: Sample?,
     colors: WindowColors,
 ) {
-    setNoDataTextColor(colors.labels)
+    setNoDataTextColor(colors.labels.toArgb())
     if (scale == null || recent.isEmpty()) {
         data = null
         invalidate()
@@ -250,18 +239,17 @@ fun LineChart.showWindow(
         valueFormatter = object : ValueFormatter() {
             override fun getFormattedValue(value: Float) = scale.label(value.toDouble())
         }
-        textColor = colors.labels
-        gridColor = colors.grid
+        textColor = colors.labels.toArgb()
+        gridColor = colors.grid.toArgb()
     }
     val segments = recent.segments(GAP_MS)
-    data = trendData(segments, startMs, colors.line, colors.highlight, selected ?: recent.last(), colors.line, colors.ring)
+    data = trendData(segments, startMs, colors.line.toArgb(), colors.highlight?.toArgb(), selected ?: recent.last(), colors.line.toArgb(), colors.ring.toArgb())
     // Les données changent sous le doigt : le trait reste sur la lecture choisie.
     val segment = selected?.let { s -> segments.indexOfFirst { s in it } } ?: -1
     if (selected != null && segment >= 0) highlightValue(selected.toEntry(startMs).x, segment, false) else highlightValue(null, false)
 }
 
-/** Couleurs ARGB de la courbe : ligne et point, anneau (fond de la carte), graduations, grille, trait de lecture. */
-data class WindowColors(val line: Int, val ring: Int, val labels: Int, val grid: Int, val highlight: Int)
+// WindowColors (couleurs Compose du module partagé) est converti en ARGB par showWindow.
 
 /** Mise en page de [WindowRenderer] au plus, en px : nombre de pixels et côté. */
 private const val MAX_LAYOUT_PIXELS = 4_000_000f
@@ -334,48 +322,3 @@ private fun LineChart.fitTo(width: Int, height: Int, density: Float, canvasDensi
     return factor
 }
 
-// --- Jauge : position dans la plage usuelle du PID ---------------------------------------
-
-/** Anneau de 240° ouvert vers le bas, comme un compteur ; le cercle est centré dans la vue. */
-fun PieChart.setupGauge() {
-    setupCommon()
-    setTouchEnabled(false)
-    rotationAngle = GAUGE_START_DEGREES
-    maxAngle = GAUGE_SWEEP_DEGREES
-    holeRadius = GAUGE_HOLE_PERCENT
-    transparentCircleRadius = 0f
-    setHoleColor(Color.TRANSPARENT)
-    setDrawEntryLabels(false)
-    setDrawCenterText(false)
-    minOffset = 0f
-}
-
-/**
- * Partie remplie de la jauge pour [value] dans [range], en fractions de l'anneau (0 : début, 1 : fin) ;
- * plage de part et d'autre de zéro (corrections de mélange) : remplissage depuis zéro.
- */
-fun gaugeFill(range: ClosedFloatingPointRange<Double>, value: Double): ClosedFloatingPointRange<Float> {
-    fun fraction(v: Double) = ((v - range.start) / (range.endInclusive - range.start)).coerceIn(0.0, 1.0).toFloat()
-    val origin = if (range.start < 0 && range.endInclusive > 0) fraction(0.0) else 0f
-    val current = fraction(value)
-    return min(origin, current)..max(origin, current)
-}
-
-/** [value] dans [range], remplie selon [gaugeFill]. */
-fun PieChart.showGauge(range: ClosedFloatingPointRange<Double>, value: Double?, trackColor: Int, fillColor: Int) {
-    val slices = if (value == null) {
-        listOf(1f to trackColor)
-    } else {
-        val fill = gaugeFill(range, value)
-        listOf(fill.start to trackColor, fill.endInclusive - fill.start to fillColor, 1 - fill.endInclusive to trackColor)
-    }
-    data = PieData(
-        PieDataSet(slices.map { PieEntry(it.first) }, null).apply {
-            colors = slices.map { it.second }
-            setDrawValues(false)
-            sliceSpace = 0f
-            selectionShift = 0f
-        },
-    )
-    invalidate()
-}

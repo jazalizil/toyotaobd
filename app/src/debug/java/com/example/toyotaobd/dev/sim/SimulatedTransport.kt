@@ -1,9 +1,7 @@
 package com.example.toyotaobd.dev.sim
 
 import com.example.toyotaobd.obd.ObdTransport
-import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
+import com.example.toyotaobd.obd.TransportIOException
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
@@ -35,26 +33,22 @@ internal class SimulatedTransport(
         }
     }
 
-    override val input: InputStream = object : InputStream() {
-        override fun read(): Int = received.take()
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int {
-            val first = received.take()
-            if (first < 0) {
-                received.put(END) // les lectures suivantes voient aussi la fin du flux
-                return -1
-            }
-            b[off] = first.toByte()
-            var n = 1
-            while (n < len && (received.peek() ?: END) >= 0) b[off + n++] = received.take().toByte()
-            return n
+    override suspend fun read(buffer: ByteArray): Int {
+        val first = received.take()
+        if (first < 0) {
+            received.put(END) // les lectures suivantes voient aussi la fin du flux
+            return -1
         }
+        buffer[0] = first.toByte()
+        var n = 1
+        while (n < buffer.size && (received.peek() ?: END) >= 0) buffer[n++] = received.take().toByte()
+        return n
     }
 
-    override val output: OutputStream = object : OutputStream() {
-        override fun write(b: Int) {
-            if (closed) throw IOException("Liaison simulée fermée")
-            when (val c = b.toChar()) {
+    override suspend fun write(data: ByteArray) {
+        if (closed) throw TransportIOException("Liaison simulée fermée")
+        for (byte in data) {
+            when (val c = byte.toInt().toChar()) {
                 '\r' -> {
                     val command = pending.toString()
                     pending.clear()

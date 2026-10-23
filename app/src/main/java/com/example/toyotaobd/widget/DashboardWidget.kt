@@ -68,6 +68,7 @@ import com.example.toyotaobd.obd.Pid
 import com.example.toyotaobd.obd.Pids
 import com.example.toyotaobd.obd.ToyotaHybrid
 import com.example.toyotaobd.obdSession
+import com.example.toyotaobd.platform.SharedPreferencesStore
 import com.example.toyotaobd.session.ConnectionState
 import com.example.toyotaobd.session.LiveState
 import com.example.toyotaobd.session.Sample
@@ -92,7 +93,7 @@ class DashboardWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val session = context.obdSession
         // Tendances sur la durée des courbes de l'application (relue à chaque session Glance).
-        val windowMs = DashboardStore(context).load().windowMinutes * 60_000L
+        val windowMs = DashboardStore(SharedPreferencesStore(context, "dashboard")).load().windowMinutes * 60_000L
         provideContent {
             // État de connexion immédiat ; valeurs au plus toutes les 2 s, comme les updateAll()
             // d'ObdSession hors session Glance. Sinon le widget entier serait recomposé (et envoyé

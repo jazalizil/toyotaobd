@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ToyotaObd"
 include(":app")
+include(":shared")

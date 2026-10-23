@@ -15,6 +15,7 @@ import com.example.toyotaobd.obd.ResponseParser
 import com.example.toyotaobd.obd.Toyota
 import com.example.toyotaobd.obd.ToyotaHybrid
 import com.example.toyotaobd.obd.EnhancedPid
+import com.example.toyotaobd.obd.TransportIOException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -23,7 +24,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
 
 /** L'application complète (Elm327 + ObdClient) face au simulateur, sans délais. */
 class SimulatorTest {
@@ -217,8 +217,8 @@ class SimulatorTest {
         client.initialize(ProtocolChoice.TOYOTA_AUTO)
 
         val cause = withTimeout(5_000) { elms.last().disconnected.await() }
-        assertTrue(cause is IOException)
-        assertThrows(IOException::class.java) { runBlocking { client.readPid(Pids.RPM) } }
+        assertTrue(cause is TransportIOException)
+        assertThrows(TransportIOException::class.java) { runBlocking { client.readPid(Pids.RPM) } }
     }
 
     @Test

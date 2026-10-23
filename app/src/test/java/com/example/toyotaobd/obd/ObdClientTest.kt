@@ -11,9 +11,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
 import kotlin.concurrent.thread
@@ -30,25 +27,21 @@ private class FakeElm(
     private val queue = LinkedBlockingQueue<Int>()
     private val pending = StringBuilder()
 
-    override val input = object : InputStream() {
-        override fun read(): Int = queue.take()
-
-        override fun read(b: ByteArray, off: Int, len: Int): Int {
-            val first = queue.take()
-            if (first < 0) return -1
-            b[off] = first.toByte()
-            var n = 1
-            while (n < len && (queue.peek() ?: -1) >= 0) b[off + n++] = queue.take().toByte()
-            return n
-        }
+    override suspend fun read(buffer: ByteArray): Int {
+        val first = queue.take()
+        if (first < 0) return -1
+        buffer[0] = first.toByte()
+        var n = 1
+        while (n < buffer.size && (queue.peek() ?: -1) >= 0) buffer[n++] = queue.take().toByte()
+        return n
     }
 
-    override val output = object : OutputStream() {
-        override fun write(b: Int) {
-            val c = b.toChar()
+    override suspend fun write(data: ByteArray) {
+        for (byte in data) {
+            val c = byte.toInt().toChar()
             if (c != '\r') {
                 pending.append(c)
-                return
+                continue
             }
             val command = pending.toString().also { pending.clear() }
             commands += command
@@ -261,7 +254,7 @@ class ObdClientTest {
 
         fake.close()
         val cause = withTimeout(2_000) { elm.disconnected.await() }
-        assertTrue(cause is IOException)
-        assertThrows(IOException::class.java) { runBlocking { elm.send("ATI") } }
+        assertTrue(cause is TransportIOException)
+        assertThrows(TransportIOException::class.java) { runBlocking { elm.send("ATI") } }
     }
 }

@@ -21,6 +21,7 @@ import com.example.toyotaobd.R
 import com.example.toyotaobd.data.DashboardSection
 import com.example.toyotaobd.data.DashboardStore
 import com.example.toyotaobd.obdSession
+import com.example.toyotaobd.platform.SharedPreferencesStore
 import com.example.toyotaobd.session.ConnectionState
 import com.example.toyotaobd.session.LiveState
 import com.example.toyotaobd.session.atMostEvery
@@ -60,7 +61,7 @@ internal class DashboardCarScreen(carContext: CarContext, private val surface: C
     }
 
     private val session = carContext.obdSession
-    private val dashboardStore = DashboardStore(carContext)
+    private val dashboardStore = DashboardStore(SharedPreferencesStore(carContext, "dashboard"))
     private var activeSection = DashboardSection.MAIN
 
     /** Page affichée par le carrousel, remise à la première à chaque onglet touché. */

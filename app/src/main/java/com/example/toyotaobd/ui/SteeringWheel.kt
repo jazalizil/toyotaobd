@@ -6,12 +6,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import kotlin.math.min
 
-/**
- * Sens de rotation : l'angle Toyota est positif quand on tourne à gauche (convention ISO 8855,
- * celle du capteur d'angle sur le CAN), soit dans le sens inverse des aiguilles d'une montre.
- * À vérifier sur la voiture : inverser ce signe si le dessin tourne à l'envers.
- */
-const val STEERING_CLOCKWISE = -1f
+// Le sens de rotation (STEERING_CLOCKWISE) et le composable du téléphone sont dans le module
+// partagé ; ce fichier ne garde que le dessin Android (Canvas) du widget.
 
 /**
  * Volant à trois branches tourné de [rotation] degrés (sens horaire), centré dans [width] × [height]

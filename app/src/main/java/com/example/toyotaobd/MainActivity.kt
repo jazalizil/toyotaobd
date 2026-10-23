@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.example.toyotaobd.ui.ObdApp
+import com.example.toyotaobd.ui.rememberObdViewModel
 import com.example.toyotaobd.ui.theme.ToyotaObdTheme
 
 class MainActivity : ComponentActivity() {
@@ -13,7 +14,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ToyotaObdTheme {
-                ObdApp()
+                ObdApp(rememberObdViewModel((application as ObdApplication).deps))
             }
         }
     }

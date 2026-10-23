@@ -5,10 +5,12 @@ coreKtx = "1.17.0"
 activityCompose = "1.11.0"
 lifecycle = "2.9.4"
 composeBom = "2025.10.01"
+composeMultiplatform = "1.9.0"
 coroutines = "1.10.2"
 glance = "1.2.0"
 carApp = "1.7.0"
 mpandroidchart = "v3.1.0"
+kotlinxSerialization = "1.9.0"
 junit = "4.13.2"
 
 [libraries]
@@ -27,10 +29,23 @@ androidx-glance-material3 = { group = "androidx.glance", name = "glance-material
 androidx-car-app = { group = "androidx.car.app", name = "app", version.ref = "carApp" }
 androidx-car-app-projected = { group = "androidx.car.app", name = "app-projected", version.ref = "carApp" }
 mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", version.ref = "mpandroidchart" }
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+# Artefacts Compose Multiplatform (le plugin org.jetbrains.compose n'expose pas d'accesseur pour ceux-là).
+# material-icons-core : dernière version multiplateforme publiée (1.7.3) ; compatible avec CMP 1.9.
+compose-materialIconsCore = { group = "org.jetbrains.compose.material", name = "material-icons-core", version = "1.7.3" }
+compose-uiToolingPreview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "composeMultiplatform" }
+# Variantes multiplateformes des bibliothèques Lifecycle (mêmes versions que les artefacts Android).
+lifecycle-multiplatform-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-multiplatform-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

@@ -16,6 +16,7 @@ import android.util.Log
 import androidx.annotation.MainThread
 import androidx.car.app.SurfaceCallback
 import androidx.car.app.SurfaceContainer
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.core.graphics.withTranslation
 import com.example.toyotaobd.data.CardStyle
 import com.example.toyotaobd.obd.Pid
@@ -133,11 +134,11 @@ internal class CarSurface(context: Context) : SurfaceCallback {
     private val renderer = WindowRenderer(
         context.applicationContext, LABEL_SIZE_DP,
         WindowColors(
-            line = Color.WHITE,
-            ring = Color.BLACK,
-            labels = Color.argb(200, 255, 255, 255),
-            grid = Color.argb(60, 255, 255, 255),
-            highlight = Color.WHITE,
+            line = ComposeColor.White,
+            ring = ComposeColor.Black,
+            labels = ComposeColor(0xC8FFFFFF),
+            grid = ComposeColor(0x3CFFFFFF),
+            highlight = ComposeColor.White,
         ),
     )
     private val sparkline = SparklineCanvasRenderer(
@@ -282,7 +283,7 @@ internal class CarSurface(context: Context) : SurfaceCallback {
     }
 
     /**
-     * Anneau de 240° ouvert vers le bas (comme [com.example.toyotaobd.ui.setupGauge] sur le téléphone),
+     * Anneau de 240° ouvert vers le bas (comme la jauge Compose du module partagé sur le téléphone),
      * rempli selon [gaugeFill] ; lecture et unité au centre, bornes de la plage usuelle sous ses extrémités.
      */
     private fun drawGauge(canvas: Canvas, slide: CarSlide, width: Int, height: Int, density: Float) {
