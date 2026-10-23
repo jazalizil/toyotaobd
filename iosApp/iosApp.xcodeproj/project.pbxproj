@@ -153,7 +153,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "cd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode";
+			shellScript = "cd \"$SRCROOT/..\"\nif [ -z \"$JAVA_HOME\" ]; then\n  if [ -x \"$HOME/.sdkman/candidates/java/current/bin/java\" ]; then\n    export JAVA_HOME=\"$HOME/.sdkman/candidates/java/current\"\n  elif [ -x \"/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java\" ]; then\n    export JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\"\n  else\n    export JAVA_HOME=\"$(/usr/libexec/java_home)\"\n  fi\nfi\n./gradlew :shared:embedAndSignAppleFrameworkForXcode";
 		};
 /* End PBXShellScriptBuildPhase section */
 
