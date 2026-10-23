@@ -78,7 +78,11 @@ object Pids {
     val CATALYST_TEMP_B1S1 = Pid(0x3C, "Catalyseur B1S1", "°C", 2, range = 0.0..900.0) { word(it) / 10 - 40 }
     val MODULE_VOLTAGE = Pid(0x42, "Tension calculateur", "V", 2, 2, range = 10.0..16.0) { word(it) / 1000 }
     val AMBIENT_TEMP = Pid(0x46, "Température extérieure", "°C", 1, range = -20.0..45.0) { it[0] - 40.0 }
-    val PEDAL_D = Pid(0x49, "Pédale d'accélérateur", "%", 1, range = 0.0..100.0) { it[0] * 100.0 / 255 }
+    /**
+     * Position relative de la pédale : 0 % au repos. Le 49 (« position D ») donne la tension brute du
+     * capteur, qui démarre à ~16 % sur Toyota ; le 5A est la même mesure remise à zéro.
+     */
+    val PEDAL = Pid(0x5A, "Pédale d'accélérateur", "%", 1, range = 0.0..100.0) { it[0] * 100.0 / 255 }
     val OIL_TEMP = Pid(0x5C, "Huile moteur", "°C", 1, range = 0.0..140.0) { it[0] - 40.0 }
     val FUEL_RATE = Pid(0x5E, "Débit de carburant", "L/h", 2, 1, range = 0.0..20.0) { word(it) / 20 }
 
@@ -132,7 +136,7 @@ object Pids {
         FUEL_ECONOMY,
         FUEL_RATE,
         FUEL_LEVEL,
-        PEDAL_D,
+        PEDAL,
         ToyotaHybrid.STEERING_ANGLE,
         HYBRID_BATTERY,
         ToyotaHybrid.MOTOR_TORQUE,

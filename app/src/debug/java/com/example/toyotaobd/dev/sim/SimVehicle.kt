@@ -224,7 +224,7 @@ internal object SimVehicles {
         0x3C to { s -> word((s.catalyst + 40) * 10) },
         0x42 to { s -> word(s.voltage * 1000) },
         0x46 to { _ -> byte(18.0 + 40) },
-        0x49 to { s -> byte((14 + s.throttle * 0.9) * 255 / 100) },
+        0x5A to { s -> byte(s.throttle * 255 / 100) },
         0x5E to { s -> word(s.fuelRate * 20) },
     )
 

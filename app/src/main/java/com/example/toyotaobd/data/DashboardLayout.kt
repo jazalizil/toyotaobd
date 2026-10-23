@@ -116,7 +116,7 @@ data class DashboardLayout(val cards: List<DashboardCard>, val windowMinutes: In
 
                     ToyotaHybrid.REGEN_TORQUE -> DashboardCard(pid.code, CardStyle.LINE)
 
-                    Pids.RPM, Pids.FUEL_ECONOMY, Pids.PEDAL_D, Pids.COOLANT_TEMP, Pids.ENGINE_LOAD, Pids.FUEL_LEVEL, Pids.HYBRID_BATTERY, ToyotaHybrid.SOC, ToyotaHybrid.STEERING_ANGLE, ToyotaHybrid.MOTOR_RPM, ToyotaHybrid.MOTOR_TORQUE -> DashboardCard(
+                    Pids.RPM, Pids.FUEL_ECONOMY, Pids.PEDAL, Pids.COOLANT_TEMP, Pids.ENGINE_LOAD, Pids.FUEL_LEVEL, Pids.HYBRID_BATTERY, ToyotaHybrid.SOC, ToyotaHybrid.STEERING_ANGLE, ToyotaHybrid.MOTOR_RPM, ToyotaHybrid.MOTOR_TORQUE -> DashboardCard(
                         pid.code, CardStyle.GAUGE
                     )
 
@@ -133,9 +133,11 @@ data class DashboardLayout(val cards: List<DashboardCard>, val windowMinutes: In
             val window = parts[1].toIntOrNull()?.takeIf { it in WINDOW_MINUTES } ?: return null
             val cards = parts[2].split(",").filter { it.isNotEmpty() }.map { entry ->
                 val pid = entry.substringBefore(":").toIntOrNull(16) ?: return null
+                // Le 49 (pédale non remise à zéro) a été remplacé par le 5A (position relative).
+                val migrated = if (pid == 0x49) 0x5A else pid
                 val flags = entry.substringAfter(":", "")
                 val style = CardStyle.entries.firstOrNull { it.code == flags.firstOrNull() } ?: return null
-                DashboardCard(pid, style, wide = flags.drop(1) == "W")
+                DashboardCard(migrated, style, wide = flags.drop(1) == "W")
             }
             val layout = DashboardLayout(cards.distinctBy { it.pid }, window)
             val added =

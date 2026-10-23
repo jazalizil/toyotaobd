@@ -140,7 +140,7 @@ private val SHORT_LABELS = mapOf(
     0x09 to "LTFT B2", 0x0B to "Collecteur", 0x0C to "Régime", 0x0D to "Vitesse", 0x0E to "Avance",
     0x0F to "Air adm.", 0x10 to "MAF", 0x11 to "Papillon", 0x1F to "Moteur depuis", 0x21 to "Dist. voyant",
     0x2F to "Carburant", 0x31 to "Dist. effac.", 0x33 to "Baro", 0x3C to "Catalyseur", 0x42 to "Tension ECU",
-    0x46 to "Extérieur", 0x49 to "Pédale", 0x5C to "Huile", 0x5E to "Débit carb.", 0x200 to "Conso",
+    0x46 to "Extérieur", 0x5A to "Pédale", 0x5C to "Huile", 0x5E to "Débit carb.", 0x200 to "Conso",
 ) + with(ToyotaHybrid) {
     mapOf(
         Pids.HYBRID_BATTERY to "Batt. HV", SOC to "Batt. HV", HV_POWER to "Puiss. HV", HV_CURRENT to "Courant HV",
