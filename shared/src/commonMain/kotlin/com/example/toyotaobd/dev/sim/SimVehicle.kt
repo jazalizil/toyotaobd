@@ -1,5 +1,6 @@
 package com.example.toyotaobd.dev.sim
 
+import com.example.toyotaobd.util.fmt
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -8,7 +9,7 @@ import kotlin.math.sin
  * Valeurs physiques du véhicule simulé à l'instant [t] (secondes depuis la connexion).
  * Cycle de conduite de 90 s : arrêt, accélération, croisière, décélération, arrêt.
  */
-internal class SimState(val t: Double, hybrid: Boolean, clearedAt: Double?) {
+ class SimState(val t: Double, hybrid: Boolean, clearedAt: Double?) {
     private val phase = t % 90
 
     val accelerating = phase >= 10 && phase < 30
@@ -84,23 +85,23 @@ internal class SimState(val t: Double, hybrid: Boolean, clearedAt: Double?) {
     private fun noise(seed: Int) = sin(t * (1.7 + seed) + seed)
 }
 
-internal fun byte(value: Double): List<Int> = listOf(value.roundToInt().coerceIn(0, 0xFF))
+ fun byte(value: Double): List<Int> = listOf(value.roundToInt().coerceIn(0, 0xFF))
 
-internal fun word(value: Double): List<Int> {
+ fun word(value: Double): List<Int> {
     val w = value.roundToInt().coerceIn(0, 0xFFFF)
     return listOf(w shr 8, w and 0xFF)
 }
 
 /** Mot de 16 bits en complément à deux (courant de 1F9A). */
-internal fun signedWord(value: Double): List<Int> = word((value.roundToInt().coerceIn(-0x8000, 0x7FFF) and 0xFFFF).toDouble())
+ fun signedWord(value: Double): List<Int> = word((value.roundToInt().coerceIn(-0x8000, 0x7FFF) and 0xFFFF).toDouble())
 
 /** Températures de la batterie Toyota : 2 octets, 255,9 °C sur 65535, décalées de 50 °C. */
-internal fun batteryTemp(celsius: Double): List<Int> = word((celsius + 50) * 65_535 / 255.9)
+ fun batteryTemp(celsius: Double): List<Int> = word((celsius + 50) * 65_535 / 255.9)
 
 /**
  * Calculateur simulé. Les codes défaut sont stockés bruts (2 octets SAE J2012) : 0x0420 = P0420.
  */
-internal class SimEcu(
+ class SimEcu(
     val canRequestId: Int,
     val legacyAddress: Int,
     /** PID du mode 01 ; 0x01 (statut) et les PID de capacités (0x00, 0x20...) sont gérés automatiquement. */
@@ -141,7 +142,7 @@ internal class SimEcu(
                 !physical -> emptyList()
                 else -> {
                     // Identifiant inconnu : 0x31 (hors plage) ; aucun PID constructeur : 0x11 (service non supporté).
-                    val key = request.joinToString("") { "%02X".format(it) }
+                    val key = request.joinToString("") { "%02X".fmt(it) }
                     val data = enhanced[key]?.invoke(state)
                     val refusal = if (enhanced.isEmpty()) 0x11 else 0x31
                     listOf(if (data != null) listOf(sid + 0x40) + request.drop(1) + data else listOf(0x7F, sid, refusal))
@@ -179,7 +180,7 @@ internal class SimEcu(
 }
 
 /** Véhicule simulé : protocole, calculateurs et état partagé (effacement des codes). */
-internal class SimVehicle(
+ class SimVehicle(
     /** Numéro de protocole ELM327 : '6' = CAN 11 bits 500k, '3' = ISO 9141-2. */
     val protocol: Char,
     private val hybrid: Boolean,
@@ -202,7 +203,7 @@ internal class SimVehicle(
 }
 
 /** Véhicules proposés par le simulateur. */
-internal object SimVehicles {
+ object SimVehicles {
     const val HYBRID_VIN = "JTDZN3EU0SM000001"
 
     private val enginePids: Map<Int, (SimState) -> List<Int>> = mapOf(

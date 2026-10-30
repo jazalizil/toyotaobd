@@ -1,6 +1,7 @@
 package com.example.toyotaobd.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -58,13 +59,18 @@ fun ObdApp(vm: ObdViewModel) {
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        if (issue != null && vm.simulators.isEmpty()) {
-            Message(issue.message, issue.action) { fixIssue(issue) }
-        } else {
-            val connection by vm.connection.collectAsStateWithLifecycle()
-            when (val state = connection) {
-                is ConnectionState.Connected -> MainScreen(vm, state)
-                else -> ConnectScreen(vm, state, issue) { issue?.let(fixIssue) }
+        // Sur iOS, le contrôleur laisse le Compose couvrir tout l'écran (ignoreSafeArea) : la zone
+        // sûre (encoche, barre d'accueil) est appliquée ici au contenu, le fond reste plein écran.
+        // Les écrans qui appliquent déjà safeDrawingPadding consomment des insets à zéro.
+        Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+            if (issue != null && vm.simulators.isEmpty()) {
+                Message(issue.message, issue.action) { fixIssue(issue) }
+            } else {
+                val connection by vm.connection.collectAsStateWithLifecycle()
+                when (val state = connection) {
+                    is ConnectionState.Connected -> MainScreen(vm, state)
+                    else -> ConnectScreen(vm, state, issue) { issue?.let(fixIssue) }
+                }
             }
         }
     }

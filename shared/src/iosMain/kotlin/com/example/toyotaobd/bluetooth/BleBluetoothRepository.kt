@@ -4,6 +4,7 @@ package com.example.toyotaobd.bluetooth
 
 import com.example.toyotaobd.obd.ObdTransport
 import com.example.toyotaobd.obd.TransportIOException
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -34,6 +35,7 @@ import platform.Foundation.create
 import platform.darwin.NSObject
 import platform.posix.memcpy
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Services « UART » des adaptateurs ELM327 BLE, par (service, notification, écriture).
@@ -219,6 +221,7 @@ private class BleTransport(
         deferred.completeExceptionally(TransportIOException(error.localizedDescription))
     }
 
+    @OptIn(BetaInteropApi::class)
     private fun toNSData(data: ByteArray): NSData = data.usePinned { pinned ->
         NSData.create(bytes = pinned.addressOf(0), length = data.size.toULong())
     }
@@ -297,7 +300,7 @@ class BleBluetoothRepository : BluetoothRepository {
     }
 
     override suspend fun connect(address: String): ObdTransport {
-        val transport = withTimeout(CONNECT_TIMEOUT_MS) {
+        val transport = withTimeout(CONNECT_TIMEOUT_MS.milliseconds) {
             val peripheral = withContext(Dispatchers.Main) {
                 manager // crée le gestionnaire (et la demande d'autorisation) au besoin
                 val uuid = NSUUID(uUIDString = address)

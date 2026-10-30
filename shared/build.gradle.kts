@@ -14,8 +14,12 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_17)
         }
     }
-    // iOS : appareil (arm64) et simulateur Apple Silicon.
+    // iOS : appareil (arm64), simulateur Apple Silicon et simulateur Intel (x86_64).
+    // iosX64() est requis : sinon :shared:syncComposeResourcesForIos échoue avec
+    // "Cannot query the value of this provider because it has no value available"
+    // (CMP-8436) car Xcode peut cibler une tranche simulateur x86_64 sans cible Kotlin correspondante.
     listOf(
+        iosX64(),
         iosArm64(),
         iosSimulatorArm64(),
     ).forEach { target ->

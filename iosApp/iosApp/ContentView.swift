@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import shared
 
 /// Interface Compose partagée : le contrôleur racine du module `shared`.
 struct ComposeView: UIViewControllerRepresentable {

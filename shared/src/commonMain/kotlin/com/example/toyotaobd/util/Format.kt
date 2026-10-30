@@ -23,7 +23,8 @@ fun String.fmt(vararg args: Any?): String {
         }
         var i = index + 1
         val flags = buildString {
-            while (i < length && this@fmt[i] in "0,-+ ") {
+            // `length` désignerait le StringBuilder courant : utiliser this@fmt.length.
+            while (i < this@fmt.length && this@fmt[i] in "0,-+ ") {
                 append(this@fmt[i])
                 i++
             }
@@ -48,7 +49,12 @@ fun String.fmt(vararg args: Any?): String {
             when (val conversion = this[i]) {
                 'd' -> {
                     val digits = (arg as Number).toLong().toString()
-                    if (',' in flags) groupThousands(digits) else digits
+                    val body = if (',' in flags) groupThousands(digits) else digits
+                    // Drapeau « 0 » + largeur : « %02d » → « 05 » (signe avant le remplissage).
+                    if ('0' in flags && width > body.length) {
+                        val sign = if (body.startsWith("-")) "-" else ""
+                        sign + body.removePrefix("-").padStart(width - sign.length, '0')
+                    } else body
                 }
                 'X' -> (arg as Number).toLong().toString(16).uppercase().padStart(width, '0')
                 'x' -> (arg as Number).toLong().toString(16).padStart(width, '0')

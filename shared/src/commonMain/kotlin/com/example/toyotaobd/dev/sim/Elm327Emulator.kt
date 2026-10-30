@@ -1,18 +1,19 @@
 package com.example.toyotaobd.dev.sim
 
-import java.util.Locale
+import com.example.toyotaobd.util.fmt
+import kotlin.time.TimeSource
 
 /** Texte renvoyé par l'adaptateur (sans l'invite `>`) et durée de traitement simulée. */
-internal data class SimReply(val text: String, val delayMs: Long)
+data class SimReply(val text: String, val delayMs: Long)
 
 /**
  * Interpréteur de commandes ELM327 v1.5 : réglages AT (écho, espaces, en-têtes, adressage,
  * filtre de réception, protocole), recherche du protocole, puis mise en forme des réponses
  * du [vehicle] comme le ferait un vrai adaptateur (trames CAN ISO-TP ou messages ISO 9141).
  */
-internal class Elm327Emulator(
+class Elm327Emulator(
     private val vehicle: SimVehicle,
-    private val clock: () -> Long = System::currentTimeMillis,
+    private val clock: () -> Long = { (TimeSource.Monotonic.markNow() - START).inWholeMilliseconds },
 ) {
     private val startedAt = clock()
 
@@ -59,7 +60,7 @@ internal class Elm327Emulator(
             }
             cmd == "DPN" -> ok(describeProtocolNumber())
             cmd == "DP" -> ok(PROTOCOL_NAMES[activeProtocol ?: protocolSetting.last()] ?: "AUTO")
-            cmd == "RV" -> ok("%.1fV".format(Locale.US, if (vehicle.ignitionOn) vehicle.state(elapsedSeconds).voltage else 12.3))
+            cmd == "RV" -> ok("%.1fV".fmt(if (vehicle.ignitionOn) vehicle.state(elapsedSeconds).voltage else 12.3))
             cmd == "PC" -> { activeProtocol = null; ok() }
             cmd == "CRA" || cmd == "AR" -> { receiveFilter = null; ok() }
             Regex("^CRA[0-9A-F]{3}$").matches(cmd) -> { receiveFilter = cmd.drop(3).toInt(16); ok() }
@@ -109,11 +110,11 @@ internal class Elm327Emulator(
             listOf(hex(frame + (frame.sum() and 0xFF)))
         }
         legacy -> listOf(hex(payload))
-        headers -> canFrames(payload).map { "%03X".format(ecu.canResponseId) + separator + hex(it) }
+        headers -> canFrames(payload).map { "%03X".fmt(ecu.canResponseId) + separator + hex(it) }
         payload.size <= 7 -> listOf(hex(payload))
         // En-têtes désactivés : longueur totale puis trames numérotées « 0: », « 1: »...
-        else -> listOf("%03X".format(payload.size), "0:$separator" + hex(payload.take(6))) +
-            payload.drop(6).chunked(7).mapIndexed { i, chunk -> "%X:".format((i + 1) and 0xF) + separator + hex(chunk) }
+        else -> listOf("%03X".fmt(payload.size), "0:$separator" + hex(payload.take(6))) +
+            payload.drop(6).chunked(7).mapIndexed { i, chunk -> "%X:".fmt((i + 1) and 0xF) + separator + hex(chunk) }
     }
 
     /** Découpage ISO 15765-2 : trame unique, ou première trame + trames consécutives, complétées à 8 octets. */
@@ -126,7 +127,7 @@ internal class Elm327Emulator(
 
     private val separator: String get() = if (spaces) " " else ""
 
-    private fun hex(bytes: List<Int>) = bytes.joinToString(separator) { "%02X".format(it) }
+    private fun hex(bytes: List<Int>) = bytes.joinToString(separator) { "%02X".fmt(it) }
 
     private fun describeProtocolNumber(): String {
         val number = activeProtocol ?: protocolSetting.last()
@@ -145,6 +146,8 @@ internal class Elm327Emulator(
 
     private companion object {
         const val BROADCAST = 0x7DF
+
+        private val START = TimeSource.Monotonic.markNow()
 
         val PROTOCOL_NAMES = mapOf(
             '3' to "ISO 9141-2",
