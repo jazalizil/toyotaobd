@@ -17,8 +17,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -81,9 +83,39 @@ private class PlotBounds(scale: ChartScale) {
 // --- Tendance : carte « Valeur » ---------------------------------------------------------
 
 /**
+ * Réduit [samples] pour le dessin : au plus ~[maxPoints] seaux, en gardant le min et le max de
+ * chacun (les pics ne sont pas perdus) avec un échantillon de chevauchement entre seaux pour la
+ * continuité de la ligne. Au-delà de ~2 points par pixel, les points intermédiaires sont invisibles.
+ */
+private fun List<Sample>.forDrawing(maxPoints: Int): List<Sample> {
+    if (size <= maxPoints) return this
+    val out = ArrayList<Sample>(maxPoints * 2)
+    val bucket = size.toDouble() / maxPoints
+    var i = 0.0
+    while (i < size) {
+        val end = minOf(size, (i + bucket).toInt() + 1)
+        var minS = this[i.toInt()]
+        var maxS = minS
+        for (j in i.toInt() until end) {
+            val s = this[j]
+            if (s.value < minS.value) minS = s
+            if (s.value > maxS.value) maxS = s
+        }
+        out += minS
+        if (maxS !== minS) out += maxS
+        if (end >= size) break
+        i = end.toDouble() - 1 // le dernier du seau sert de premier au suivant
+    }
+    return out
+}
+
+/**
  * Courbe sans axe ni interaction, à [insetDp] dp des bords (place du dernier point). Tendance sur
  * toute la largeur, des premières aux dernières lectures ; la dernière en [dotColor], entourée
  * d'un anneau [ringColor] s'il est donné. Moins de deux lectures : rien.
+ *
+ * Les [Path] sont construits dans un [drawWithCache] : ils ne sont reconstruits que quand les
+ * lectures changent, pas à chaque image de défilement (où le cache est réutilisé tel quel).
  */
 @Composable
 fun Sparkline(
@@ -102,29 +134,38 @@ fun Sparkline(
     val scale = remember(samples, range) {
         ChartScale.of(samples.minOf { it.value }, samples.maxOf { it.value }, range)
     }
-    Canvas(modifier.padding(insetDp.dp)) {
-        val bounds = PlotBounds(scale)
-        val startMs = samples.first().timeMs
-        val spanMs = (samples.last().timeMs - startMs).coerceAtLeast(1)
+    val samplesState = rememberUpdatedState(samples)
+    val scaleState = rememberUpdatedState(scale)
+    Canvas(modifier.padding(insetDp.dp).drawWithCache {
+        val list = samplesState.value
+        val bounds = PlotBounds(scaleState.value)
+        val startMs = list.first().timeMs
+        val spanMs = (list.last().timeMs - startMs).coerceAtLeast(1)
         val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-        for (segment in samples.segments(GAP_MS)) {
-            val path = Path()
-            segment.forEachIndexed { index, sample ->
-                val x = size.width * (sample.timeMs - startMs) / spanMs
-                val y = bounds.y(size.height, sample.value.toFloat())
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        // ~2 points par pixel de large : assez pour la forme, assez peu pour tenir le défilement.
+        val drawn = list.forDrawing((size.width / 2f).toInt().coerceAtLeast(8))
+        val paths = drawn.segments(GAP_MS).map { segment ->
+            Path().apply {
+                segment.forEachIndexed { index, sample ->
+                    val x = size.width * (sample.timeMs - startMs) / spanMs
+                    val y = bounds.y(size.height, sample.value.toFloat())
+                    if (index == 0) moveTo(x, y) else lineTo(x, y)
+                }
             }
-            drawPath(path, lineColor, style = stroke)
         }
         // Dernière lecture : point d'accent, entouré d'un anneau de la couleur de la carte.
-        val last = samples.last()
+        val last = list.last()
         val center = Offset(
             size.width * (last.timeMs - startMs) / spanMs,
             bounds.y(size.height, last.value.toFloat()),
         )
-        if (ringColor != null) drawCircle(ringColor, radius = 6.dp.toPx(), center = center)
-        drawCircle(dotColor, radius = 4.dp.toPx(), center = center)
-    }
+        val ring = ringColor
+        onDrawBehind {
+            for (path in paths) drawPath(path, lineColor, style = stroke)
+            if (ring != null) drawCircle(ring, radius = 6.dp.toPx(), center = center)
+            drawCircle(dotColor, radius = 4.dp.toPx(), center = center)
+        }
+    }) { }
 }
 
 // --- Courbe : fenêtre fixe, graduations, lecture au doigt ---------------------------------
@@ -160,16 +201,24 @@ fun TrendWindow(
     val bounds = remember(scale) { PlotBounds(scale) }
     val ticks = scale.ticks
     val windowSeconds = (windowMs / 1_000f).coerceAtLeast(1f)
+    // États relus dans le gesture et le cache de dessin : le détecteur de gestes n'est pas recréé
+    // quand la fenêtre avance, et les Path ne sont reconstruits que quand les lectures changent.
+    val recentState = rememberUpdatedState(recent)
+    val boundsState = rememberUpdatedState(bounds)
+    val startMsState = rememberUpdatedState(startMs)
+    val windowSecondsState = rememberUpdatedState(windowSeconds)
+    val selectedState = rememberUpdatedState(selected)
 
     Layout(
         content = {
             Canvas(
                 Modifier
                     .layoutId("chart")
-                    .pointerInput(startMs, windowMs) {
+                    .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            fun read(x: Float): Float = (x / size.width * windowSeconds).coerceIn(0f, windowSeconds)
+                            val windowSec = windowSecondsState.value
+                            fun read(x: Float): Float = (x / size.width * windowSec).coerceIn(0f, windowSec)
                             onSelect(read(down.position.x))
                             var travelled = 0f
                             var previous = down.position
@@ -188,10 +237,49 @@ fun TrendWindow(
                                 onSelect(read(change.position.x))
                             }
                         }
+                    }
+                    .drawWithCache {
+                        val list = recentState.value
+                        val b = boundsState.value
+                        val start = startMsState.value
+                        val windowSec = windowSecondsState.value
+                        val sel = selectedState.value
+                        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                        val gridWidth = 1.dp.toPx()
+                        // Grille : une ligne par graduation.
+                        val grid = ticks.map { tick ->
+                            val y = b.y(size.height, tick.toFloat())
+                            Offset(0f, y) to Offset(size.width, y)
+                        }
+                        // ~2 points par pixel de large : assez pour la forme, assez peu pour tenir le défilement.
+                        val drawn = list.forDrawing((size.width / 2f).toInt().coerceAtLeast(8))
+                        val paths = drawn.segments(GAP_MS).map { segment ->
+                            Path().apply {
+                                segment.forEachIndexed { index, sample ->
+                                    val px = size.width * ((sample.timeMs - start) / 1_000f) / windowSec
+                                    val py = b.y(size.height, sample.value.toFloat())
+                                    if (index == 0) moveTo(px, py) else lineTo(px, py)
+                                }
+                            }
+                        }
+                        // Point marqué : la lecture au doigt, sinon la dernière valeur.
+                        val marked = sel ?: list.last()
+                        val center = Offset(
+                            size.width * ((marked.timeMs - start) / 1_000f) / windowSec,
+                            b.y(size.height, marked.value.toFloat()),
+                        )
+                        val highlightX = sel?.let { size.width * ((it.timeMs - start) / 1_000f) / windowSec }
+                        onDrawBehind {
+                            for ((from, to) in grid) drawLine(colors.grid, from, to, strokeWidth = gridWidth)
+                            for (path in paths) drawPath(path, colors.line, style = stroke)
+                            if (highlightX != null) {
+                                drawLine(colors.highlight, Offset(highlightX, 0f), Offset(highlightX, size.height), strokeWidth = 1.dp.toPx())
+                            }
+                            drawCircle(colors.ring, radius = 6.dp.toPx(), center = center)
+                            drawCircle(colors.line, radius = 4.dp.toPx(), center = center)
+                        }
                     },
-            ) {
-                drawWindow(recent, bounds, ticks, startMs, windowSeconds, selected, colors)
-            }
+            ) { }
             // Graduations, de la plus haute (max) à la plus basse (min).
             ticks.reversed().forEach { value ->
                 Text(
@@ -223,50 +311,6 @@ fun TrendWindow(
             }
         }
     }
-}
-
-/** Grille, tronçons de courbe, point marqué et trait vertical de la lecture au doigt. */
-private fun DrawScope.drawWindow(
-    recent: List<Sample>,
-    bounds: PlotBounds,
-    ticks: List<Double>,
-    startMs: Long,
-    windowSeconds: Float,
-    selected: Sample?,
-    colors: WindowColors,
-) {
-    fun x(timeMs: Long): Float = size.width * ((timeMs - startMs) / 1_000f) / windowSeconds
-
-    // Grille : une ligne par graduation (réparties régulièrement par [ChartScale]).
-    val gridWidth = 1.dp.toPx()
-    for (tick in ticks) {
-        val y = bounds.y(size.height, tick.toFloat())
-        drawLine(colors.grid, Offset(0f, y), Offset(size.width, y), strokeWidth = gridWidth)
-    }
-
-    val segments = recent.segments(GAP_MS)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-    for (segment in segments) {
-        val path = Path()
-        segment.forEachIndexed { index, sample ->
-            val px = x(sample.timeMs)
-            val py = bounds.y(size.height, sample.value.toFloat())
-            if (index == 0) path.moveTo(px, py) else path.lineTo(px, py)
-        }
-        drawPath(path, colors.line, style = stroke)
-    }
-
-    // Trait vertical de la lecture au doigt, sur toute la hauteur.
-    if (selected != null) {
-        val sx = x(selected.timeMs)
-        drawLine(colors.highlight, Offset(sx, 0f), Offset(sx, size.height), strokeWidth = 1.dp.toPx())
-    }
-
-    // Point marqué : la lecture au doigt, sinon la dernière valeur.
-    val marked = selected ?: recent.last()
-    val center = Offset(x(marked.timeMs), bounds.y(size.height, marked.value.toFloat()))
-    drawCircle(colors.ring, radius = 6.dp.toPx(), center = center)
-    drawCircle(colors.line, radius = 4.dp.toPx(), center = center)
 }
 
 // --- Jauge : position dans la plage usuelle du PID -----------------------------------------

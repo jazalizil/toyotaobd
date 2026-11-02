@@ -29,6 +29,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import com.example.toyotaobd.obd.Pid
 import com.example.toyotaobd.session.Sample
 import com.example.toyotaobd.session.SampleStats
+import com.example.toyotaobd.session.fromTime
 import com.example.toyotaobd.session.stats
 import kotlin.math.abs
 import com.example.toyotaobd.util.fmt
@@ -51,6 +54,7 @@ private const val SINCE_START = 0
  * 1 min à tout l'historique depuis le démarrage) avec lecture au doigt, et statistiques de la
  * période. [chartEndMs] : bord droit commun des courbes ; [defaultMinutes] : durée des cartes.
  */
+@OptIn(ExperimentalComposeUiApi::class) // BackHandler (CMP ui-backhandler) est encore expérimentale.
 @Composable
 fun PidDetailScreen(
     pid: Pid,
@@ -61,7 +65,7 @@ fun PidDetailScreen(
     defaultMinutes: Int,
     onBack: () -> Unit,
 ) {
-    ObdBackHandler(onBack = onBack)
+    BackHandler(onBack = onBack)
     var period by rememberSaveable(pid.code) { mutableIntStateOf(defaultMinutes) }
     val nowMs = chartEndMs()
     // « Depuis le démarrage » : l'historique commence à la connexion (au moins une minute affichée).
@@ -69,7 +73,7 @@ fun PidDetailScreen(
     val windowMs = if (period == SINCE_START) sinceStartMs.coerceAtLeast(60_000L) else period * 60_000L
     val startMs = nowMs - windowMs
     // Calculs coûteux (filtre, médiane) seulement quand ce PID change ou que la fenêtre avance.
-    val recent = remember(samples, startMs) { samples.filter { it.timeMs >= startMs } }
+    val recent = remember(samples, startMs) { samples.fromTime(startMs) }
     val stats = remember(recent) { recent.stats(GAP_MS) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {

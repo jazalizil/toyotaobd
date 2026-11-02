@@ -9,9 +9,8 @@ class TransportIOException(message: String, cause: Throwable? = null) : Exceptio
 /**
  * Lien série brut vers l'adaptateur ELM327.
  *
- * Implémentations : RFCOMM/SPP (Bluetooth classique, Android), GATT Bluetooth Low Energy (iOS),
- * simulateur (builds debug Android). Un transport BLE pourra être ajouté côté Android en
- * implémentant cette interface.
+ * Implémentations : GATT Bluetooth Low Energy via Kable (Android et iOS,
+ * [com.example.toyotaobd.bluetooth.ble.KableTransport]), simulateur (builds debug).
  */
 interface ObdTransport {
     /**

@@ -38,13 +38,13 @@ enum class BluetoothIssue(val message: String, val action: String?) {
 @Composable
 fun ObdApp(vm: ObdViewModel) {
     var permissionsGranted by remember { mutableStateOf(vm.hasPermissions()) }
-    var bluetoothEnabled by remember { mutableStateOf(vm.isBluetoothEnabled()) }
+    // Réactif : la radio peut être allumée depuis les réglages système pendant que l'app tourne.
+    val bluetoothEnabled by vm.bluetoothEnabled.collectAsStateWithLifecycle()
 
-    // Re-vérifie au retour dans l'application (Bluetooth activé depuis les réglages, autorisations
-    // accordées : la reprise de l'écran suffit, le correcteur de problème est fourni par la plateforme).
+    // Re-vérifie les autorisations au retour dans l'application (accordées dans les réglages :
+    // la reprise de l'écran suffit, le correcteur de problème est fourni par la plateforme).
     LifecycleResumeEffect(Unit) {
         permissionsGranted = vm.hasPermissions()
-        bluetoothEnabled = vm.isBluetoothEnabled()
         if (permissionsGranted && bluetoothEnabled) vm.refreshDevices()
         onPauseOrDispose { }
     }

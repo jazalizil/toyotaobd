@@ -97,15 +97,22 @@ class SimulatorTest {
 
         assertEquals(SimVehicles.UX_VIN, info.vin)
         assertTrue(Pids.HYBRID_BATTERY.code in info.supportedPids)
-        // Valeurs de 7D2 et 7B0 (où qu'elles soient rangées), sauf la copie 1F5B (5B annoncé) ; pas de
-        // batterie lithium (747) ni de HSD 3 (7E2 répond 7F 21 11).
-        val answered = Pids.DASHBOARD.filter { it.request?.ecu == Toyota.HYBRID_UDS || it.request?.ecu == Toyota.BRAKES } - ToyotaHybrid.SOC
+        // Valeurs de 7D2, 747 (batterie lithium) et 7B0 (où qu'elles soient rangées), sauf la copie
+        // 1F5B (5B annoncé) ; pas de HSD 3 (7E2 répond 7F 21 11).
+        val answered = Pids.DASHBOARD.filter {
+            it.request?.ecu == Toyota.HYBRID_UDS || it.request?.ecu == Toyota.HV_BATTERY_UDS || it.request?.ecu == Toyota.BRAKES
+        } - ToyotaHybrid.SOC
         assertEquals(answered.map { it.code }.toSet(), info.supportedPids.filter { it >= 0x100 }.toSet())
         assertTrue(sent.none { it == "221F5B" })
-        // Toutes les requêtes 7D2 sont essayées, sauf la copie 1F5B.
+        // Toutes les requêtes 7D2 sont essayées, sauf la copie 1F5B ; le 747 ne répond qu'aux éléments.
         val tngaRequests = Pids.DASHBOARD.mapNotNull { it.request }.filter { it.ecu == Toyota.HYBRID_UDS }.map { it.command }.toSet()
         assertEquals(tngaRequests - "221F5B", requestsTo("7D2").toSet())
+        assertEquals(setOf("22182E"), requestsTo("747").toSet())
         assertEquals(1, requestsTo("7E2").size) // service 21 refusé en bloc (7F 21 11) : HSD 3 absent
+
+        // Batterie lithium saine : éléments autour de 3,70 V, écart ~0,014 V.
+        assertEquals(3.700, client.read(ToyotaHybrid.CELL_MIN)!!, 0.001)
+        assertTrue(client.read(ToyotaHybrid.CELL_SPREAD)!! in 0.0..0.03)
 
         val current = client.read(ToyotaHybrid.HV_CURRENT)!!
         assertTrue(current in 45.0..75.0)

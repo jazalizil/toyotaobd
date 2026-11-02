@@ -3,6 +3,7 @@ package com.example.toyotaobd.ui
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -37,6 +39,7 @@ import com.example.toyotaobd.data.DashboardCard
 import com.example.toyotaobd.obd.Pid
 import com.example.toyotaobd.obd.ToyotaHybrid
 import com.example.toyotaobd.session.Sample
+import com.example.toyotaobd.session.fromTime
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -67,10 +70,10 @@ fun DashboardCardView(
     modifier: Modifier = Modifier,
 ) {
     val windowMs = windowMinutes * 60_000L
-    // Fenêtre ancrée sur la dernière lecture de ce PID.
+    // Fenêtre ancrée sur la dernière lecture de ce PID (recherche binaire, la liste est triée).
     val recent = remember(samples, windowMs) {
         val last = samples.lastOrNull()?.timeMs ?: return@remember emptyList()
-        samples.filter { it.timeMs >= last - windowMs }
+        samples.fromTime(last - windowMs)
     }
     val text = when {
         value != null -> pid.format(value)
@@ -95,13 +98,17 @@ fun DashboardCardView(
             onClick(label = "Afficher le détail") { onOpen(); true }
         },
     ) {
-        when (card.style) {
-            CardStyle.VALUE -> ValueContent(pid, text, value != null, recent)
-            CardStyle.LINE -> LineContent(pid, text, value != null, samples, extremes, chartEndMs, windowMinutes, onOpen)
-            CardStyle.GAUGE -> if (pid.code == ToyotaHybrid.STEERING_ANGLE.code) {
-                SteeringWheelContent(pid, value, text)
-            } else {
-                GaugeContent(pid, value, text)
+        // Couche graphique mise en cache : pendant le défilement, la carte est translatée sans être
+        // redessinée ; elle n'est re-rendue que quand ses propres valeurs changent.
+        Box(Modifier.fillMaxSize().graphicsLayer()) {
+            when (card.style) {
+                CardStyle.VALUE -> ValueContent(pid, text, value != null, recent)
+                CardStyle.LINE -> LineContent(pid, text, value != null, samples, extremes, chartEndMs, windowMinutes, onOpen)
+                CardStyle.GAUGE -> if (pid.code == ToyotaHybrid.STEERING_ANGLE.code) {
+                    SteeringWheelContent(pid, value, text)
+                } else {
+                    GaugeContent(pid, value, text)
+                }
             }
         }
     }
@@ -177,7 +184,7 @@ private fun LineContent(
     val nowMs = chartEndMs()
     val windowMs = windowMinutes * 60_000L
     val startMs = nowMs - windowMs
-    val recent = remember(samples, startMs) { samples.filter { it.timeMs >= startMs } }
+    val recent = remember(samples, startMs) { samples.fromTime(startMs) }
     val colors = MaterialTheme.colorScheme
     val chartColors = WindowColors(
         line = colors.primary,

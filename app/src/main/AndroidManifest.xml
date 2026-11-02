@@ -29,8 +29,9 @@
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
 
+    <!-- Bluetooth Low Energy uniquement : la connexion aux adaptateurs OBD passe par Kable (BLE). -->
     <uses-feature
-        android:name="android.hardware.bluetooth"
+        android:name="android.hardware.bluetooth_le"
         android:required="true" />
 
     <application

@@ -12,6 +12,8 @@ carApp = "1.7.0"
 mpandroidchart = "v3.1.0"
 kotlinxSerialization = "1.9.0"
 junit = "4.13.2"
+# Kable 0.39.2 : compilée avec Kotlin 2.2.0 et coroutines 1.10.2 (mêmes versions que le projet).
+kable = "0.39.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -32,10 +34,15 @@ mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", versio
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+# BLE multiplateforme (Android + iOS) : remplace l'accès direct à BluetoothAdapter/CoreBluetooth.
+kable-core = { group = "com.juul.kable", name = "kable-core", version.ref = "kable" }
 # Artefacts Compose Multiplatform (le plugin org.jetbrains.compose n'expose pas d'accesseur pour ceux-là).
 # material-icons-core : dernière version multiplateforme publiée (1.7.3) ; compatible avec CMP 1.9.
 compose-materialIconsCore = { group = "org.jetbrains.compose.material", name = "material-icons-core", version = "1.7.3" }
 compose-uiToolingPreview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "composeMultiplatform" }
+# BackHandler multiplateforme (CMP >= 1.8) : pas d'accesseur exposé par le plugin, comme ci-dessus.
+compose-uiBackHandler = { group = "org.jetbrains.compose.ui", name = "ui-backhandler", version.ref = "composeMultiplatform" }
 # Variantes multiplateformes des bibliothèques Lifecycle (mêmes versions que les artefacts Android).
 lifecycle-multiplatform-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 lifecycle-multiplatform-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }

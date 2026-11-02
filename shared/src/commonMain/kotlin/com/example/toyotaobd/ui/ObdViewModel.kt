@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.toyotaobd.bluetooth.BluetoothRepository
 import com.example.toyotaobd.bluetooth.BtDevice
+import com.example.toyotaobd.bluetooth.ports.BluetoothRadio
 import com.example.toyotaobd.data.CustomPidStore
 import com.example.toyotaobd.data.DashboardLayout
 import com.example.toyotaobd.data.DashboardStore
@@ -24,8 +25,11 @@ import com.example.toyotaobd.session.toUserMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.uuid.ExperimentalUuidApi
@@ -91,6 +95,14 @@ class ObdViewModel(
     val bluetoothAvailable: Boolean get() = bluetooth.isAvailable
     fun hasPermissions(): Boolean = bluetooth.hasPermissions()
     fun isBluetoothEnabled(): Boolean = bluetooth.isEnabled
+
+    /**
+     * Radio allumée, en flux réactif : le Bluetooth peut être activé depuis les réglages système
+     * pendant que l'app tourne — l'UI collecte ce flux plutôt que de relire [isBluetoothEnabled].
+     */
+    val bluetoothEnabled: StateFlow<Boolean> = bluetooth.radioState
+        .map { it == BluetoothRadio.State.ENABLED }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), bluetooth.isEnabled)
 
     init {
         // Les lectures affichées ne valent que pour la connexion en cours.

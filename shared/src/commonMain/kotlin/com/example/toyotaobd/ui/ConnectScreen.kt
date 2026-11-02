@@ -132,9 +132,9 @@ private fun HelpCard() {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("1. Branchez l'adaptateur ELM327 sur la prise OBD (sous le volant, côté conducteur).")
             Text("2. Mettez le contact (ou démarrez le moteur).")
-            Text("3. Appairez l'adaptateur dans les réglages Bluetooth d'Android (code PIN habituel : 1234 ou 0000).")
+            Text("3. Sur Android, appairez éventuellement l'adaptateur dans les réglages Bluetooth (code PIN habituel : 1234 ou 0000) : la recherche BLE suffit sinon.")
             Text(
-                "Compatible avec les adaptateurs Bluetooth « classiques » (SPP). Les modèles Bluetooth Low Energy uniquement ne sont pas encore pris en charge.",
+                "Compatible avec les adaptateurs Bluetooth Low Energy (BLE) exposant un profil UART : Nordic UART, FFF0, HM-10 (FFE0), Veepeak, OBDLink BLE...",
                 style = MaterialTheme.typography.bodySmall,
             )
         }

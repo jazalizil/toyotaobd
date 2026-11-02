@@ -263,7 +263,9 @@ import kotlin.math.sin
     private val tngaPids: Map<String, (SimState) -> List<Int>> = mapOf(
         "221F5B" to { s -> byte(s.hybridBattery * 255 / 100) },
         "221F9A" to { s -> listOf(0x0E, 0x00) + word(s.hvVoltage * 64) + signedWord(s.hvCurrent * 10) },
-        "22106C" to { s -> byte(s.hybridBattery * 2) + byte(63.0 * 2) + byte(47.0 * 2) },
+        // Comme sur un vrai UX 250h : le BMS resserre les limites autour du SOC courant (28,5/27,0
+        // à 28,6 % relevés), ce n'est pas une plage de capacité fixe.
+        "22106C" to { s -> byte(s.hybridBattery * 2) + byte((s.hybridBattery + 0.5) * 2) + byte((s.hybridBattery - 1.5) * 2) },
         // 9 octets (2 trames) : régime (A, B), octets inconnus, couple (G, H).
         "2210A1" to { s -> word(s.motorRpm + 32_768) + listOf(0x7F, 0xEC, 0x03, 0x00) + word((s.motorTorque + 4_096) * 8) + listOf(0x04) },
         "221069" to { s -> word((s.regenTorque + 4_096) * 8) + word((s.regenTorque + 4_096) * 8) },
@@ -331,8 +333,9 @@ import kotlin.math.sin
     const val UX_VIN = "JTHP9JBH0K2000001"
 
     /**
-     * Lexus UX 250h (TNGA) : moteur 7E0 ; la partie OBD du système hybride (7E2) ne donne que la
-     * charge (PID 5B) ; les données détaillées sont sur 7D2 (service 22). Pas de calculateur 747.
+     * Lexus UX 250h (TNGA, batterie lithium) : moteur 7E0 ; la partie OBD du système hybride (7E2)
+     * ne donne que la charge (PID 5B) ; les données détaillées sont sur 7D2 (service 22) et les
+     * tensions des éléments sur le calculateur batterie 747 (22182E).
      */
     fun uxHybrid() = SimVehicle(
         protocol = '6',
@@ -341,6 +344,13 @@ import kotlin.math.sin
             SimEcu(canRequestId = 0x7E0, legacyAddress = 0x10, pids = enginePids, vin = UX_VIN),
             SimEcu(canRequestId = 0x7E2, legacyAddress = 0x1A, pids = mapOf(0x5B to { s -> byte(s.hybridBattery * 255 / 100) })),
             SimEcu(canRequestId = 0x7D2, legacyAddress = 0x1A, pids = emptyMap(), enhanced = tngaPids),
+            // Batterie HV lithium : 8 éléments autour de 3,70 V, écart ~0,014 V (sain, comme un UX réel).
+            SimEcu(
+                canRequestId = 0x747,
+                legacyAddress = 0x00,
+                pids = emptyMap(),
+                enhanced = mapOf("22182E" to { _ -> List(8) { i -> word(65_535.0 * (3.70 + 0.002 * i) / 5) }.flatten() }),
+            ),
             brakes(),
         ),
     )

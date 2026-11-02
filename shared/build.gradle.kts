@@ -29,6 +29,20 @@ kotlin {
         }
     }
 
+    // Le daemon Gradle est capé à 2 Go (org.gradle.jvmargs, à ne pas augmenter) : le link release
+    // natif fait tourner tout le pipeline d'optimisation du compilateur Kotlin/Native dans ce heap
+    // (analyses interprocédurales DevirtualizationAnalysis / StaticInitializersOptimization, DCE,
+    // passes LLVM — KT-80367) et le fait déborder -> OutOfMemoryError: Java heap space, typiquement
+    // sur `./gradlew assemble` quand le daemon est déjà chargé. Pour rester dans le heap existant,
+    // les frameworks iOS *release* sont liés sans optimisation (optimized = false) : le binaire est
+    // non optimisé mais le link a le même profil mémoire qu'un link debug. Les builds debug —
+    // utilisés par Xcode via :shared:embedAndSignAppleFrameworkForXcode — ne sont pas concernés.
+    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
+        binaries.matching { it.buildType.name == "RELEASE" }.configureEach {
+            optimized = false
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -36,8 +50,10 @@ kotlin {
             implementation(compose.material3)
             implementation(libs.compose.materialIconsCore)
             implementation(compose.ui)
+            implementation(libs.compose.uiBackHandler)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kable.core)
             implementation(libs.lifecycle.multiplatform.viewmodel.compose)
             implementation(libs.lifecycle.multiplatform.runtime.compose)
         }
@@ -50,6 +66,7 @@ kotlin {
         commonTest.dependencies {
             // kotlin("test") : framework adapté à chaque cible (JUnit4 sur Android, natif sur iOS).
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }
@@ -66,3 +83,4 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+

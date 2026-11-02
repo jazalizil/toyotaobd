@@ -62,7 +62,7 @@ fun DashboardScreen(vm: ObdViewModel, info: VehicleInfo) {
     val selected = tabs.firstOrNull { it.name == selectedName } ?: tabs.firstOrNull() ?: DashboardSection.MAIN
     val gridStates = DashboardSection.entries.associateWith { rememberLazyGridState() }
     val cards = sections[selected].orEmpty()
-    // Bord droit commun des courbes. Il change au plus une fois par seconde et seules les courbes
+    // Bord droit commun des courbes. Il change au plus toutes les 5 s et seules les courbes
     // le lisent : les autres cartes ne sont pas recomposées à chaque lecture d'un PID.
     val chartEnd = remember(historyState) { derivedStateOf { chartEndMs(historyState.value) } }
     val chartEndMs = remember(chartEnd) { { chartEnd.value } }
@@ -134,6 +134,9 @@ fun DashboardScreen(vm: ObdViewModel, info: VehicleInfo) {
             }
             items(cards, key = { it.pid }, span = { GridItemSpan(if (it.wide) minOf(2, maxLineSpan) else 1) }) { card ->
                 val pid = pids.getValue(card.pid)
+                // Lambda stable : sinon chaque lecture OBD recomposerait toutes les cartes visibles,
+                // même celles dont la valeur n'a pas changé, et le défilement s'en ressentirait.
+                val onOpen = remember(card.pid) { { detailCode = card.pid } }
                 DashboardCardView(
                     card = card,
                     pid = pid,
@@ -142,7 +145,7 @@ fun DashboardScreen(vm: ObdViewModel, info: VehicleInfo) {
                     samples = history[pid.code].orEmpty(),
                     windowMinutes = layout.windowMinutes,
                     chartEndMs = chartEndMs,
-                    onOpen = { detailCode = pid.code },
+                    onOpen = onOpen,
                 )
             }
         }
@@ -166,10 +169,14 @@ fun DashboardScreen(vm: ObdViewModel, info: VehicleInfo) {
     }
 }
 
-/** Lecture la plus récente, arrondie à la seconde supérieure (toutes les valeurs restent à gauche du bord). */
+/**
+ * Lecture la plus récente, arrondie au pas de 5 s suivant (toutes les valeurs restent à gauche du
+ * bord). Un pas de 5 s suffit : le bord droit des courbes avance par à-coups imperceptibles, et les
+ * cartes « Courbe » ne sont re-fenêtrées (et redessinées) que 12 fois par minute au lieu de 60.
+ */
 fun chartEndMs(history: Map<Int, List<Sample>>): Long {
     val latest = history.values.mapNotNull { it.lastOrNull()?.timeMs }.maxOrNull() ?: return 0L
-    return (latest / 1_000 + 1) * 1_000
+    return (latest / 5_000 + 1) * 5_000
 }
 
 /** Titre d'une section de l'éditeur du tableau de bord, annoncé comme tel par TalkBack. */

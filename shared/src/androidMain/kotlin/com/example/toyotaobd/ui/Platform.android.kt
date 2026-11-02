@@ -16,7 +16,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
-import com.example.toyotaobd.bluetooth.AndroidBluetoothRepository
+import com.example.toyotaobd.bluetooth.AndroidBluetoothPermissions
 
 @Composable
 actual fun rememberBluetoothIssueFixer(): (BluetoothIssue) -> Unit {
@@ -25,17 +25,12 @@ actual fun rememberBluetoothIssueFixer(): (BluetoothIssue) -> Unit {
     return remember(permissionLauncher, enableLauncher) {
         { issue: BluetoothIssue ->
             when (issue) {
-                BluetoothIssue.PERMISSIONS -> permissionLauncher.launch(AndroidBluetoothRepository.REQUIRED_PERMISSIONS)
+                BluetoothIssue.PERMISSIONS -> permissionLauncher.launch(AndroidBluetoothPermissions.REQUIRED_PERMISSIONS)
                 BluetoothIssue.DISABLED -> enableLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                 BluetoothIssue.UNAVAILABLE -> Unit
             }
         }
     }
-}
-
-@Composable
-actual fun ObdBackHandler(onBack: () -> Unit) {
-    androidx.activity.compose.BackHandler(onBack = onBack)
 }
 
 @Composable

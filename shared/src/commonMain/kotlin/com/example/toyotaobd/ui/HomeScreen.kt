@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.toyotaobd.obd.Pid
 import com.example.toyotaobd.obd.Pids
+import com.example.toyotaobd.obd.ToyotaHybrid
 import com.example.toyotaobd.session.ConnectionState
 import com.example.toyotaobd.session.LiveState
 
@@ -63,6 +64,20 @@ fun HomeScreen(
     val health = remember(coolant, voltage, fuel, dtc.readOnce, dtcCount) {
         computeHealth(coolant, voltage, fuel, dtcCount, dtc.readOnce)
     }
+    // Batterie hybride : un score à part, calculé depuis les indicateurs d'usure du véhicule
+    // (lithium TNGA ou NiMH HSD 3). null si le véhicule n'est pas hybride ou n'a rien remonté.
+    val isHybrid = remember(live.pids) { live.pids.any(Pids::isHybridValue) }
+    val soc = values[ToyotaHybrid.SOC.code] ?: values[Pids.HYBRID_BATTERY.code]
+    val cellSpread = values[ToyotaHybrid.CELL_SPREAD.code]
+    val blockSpread = values[ToyotaHybrid.BLOCK_SPREAD.code]
+    val deltaSoc = values[ToyotaHybrid.DELTA_SOC.code]
+    val resistanceMax = values[ToyotaHybrid.RESISTANCE_MAX.code]
+    val batteryTempMax = values[ToyotaHybrid.BATTERY_TEMP_MAX.code] ?: values[ToyotaHybrid.HSD3_BATTERY_TEMP_MAX.code]
+    val battery = remember(isHybrid, cellSpread, blockSpread, deltaSoc, resistanceMax, batteryTempMax) {
+        if (isHybrid) {
+            computeHybridBatteryHealth(cellSpread, blockSpread, deltaSoc, resistanceMax, batteryTempMax)
+        } else null
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -71,6 +86,7 @@ fun HomeScreen(
     ) {
         item { HomeHeader(connection) }
         item { HealthCard(health) }
+        if (isHybrid) item { HybridBatteryCard(soc = soc, battery = battery) }
         item { AssistantCard(health, onOpenDtc) }
         item { QuickActions(onReadDtc = { vm.readDtcs(); onOpenDtc() }, onOpenLive = onOpenLive) }
         item { MetricsGrid(live) }
@@ -125,14 +141,47 @@ private fun HealthCard(health: HealthReport) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 health.top?.let {
+                    Text(it.message, style = MaterialTheme.typography.bodySmall, color = severityColor(it.severity))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun severityColor(severity: HealthSeverity): Color = when (severity) {
+    HealthSeverity.CRITICAL -> MaterialTheme.colorScheme.error
+    HealthSeverity.WARNING -> MaterialTheme.colorScheme.tertiary
+    HealthSeverity.INFO -> MaterialTheme.colorScheme.primary
+}
+
+/** Carte de la batterie hybride (véhicules hybrides uniquement) : jauge de score et point prioritaire. */
+@Composable
+private fun HybridBatteryCard(soc: Double?, battery: HealthReport?) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (battery != null) HealthGauge(battery.score)
+            Column(Modifier.weight(1f)) {
+                Text("Batterie hybride", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                if (soc != null) {
                     Text(
-                        it.message,
+                        "Charge actuelle : ${ToyotaHybrid.SOC.format(soc)} %",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val top = battery?.top
+                if (top != null) {
+                    Text(top.message, style = MaterialTheme.typography.bodySmall, color = severityColor(top.severity))
+                } else {
+                    Text(
+                        "En attente de lectures batterie…",
                         style = MaterialTheme.typography.bodySmall,
-                        color = when (it.severity) {
-                            HealthSeverity.CRITICAL -> MaterialTheme.colorScheme.error
-                            HealthSeverity.WARNING -> MaterialTheme.colorScheme.tertiary
-                            HealthSeverity.INFO -> MaterialTheme.colorScheme.primary
-                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

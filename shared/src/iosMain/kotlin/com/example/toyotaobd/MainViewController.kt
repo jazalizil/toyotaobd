@@ -1,7 +1,7 @@
 package com.example.toyotaobd
 
 import androidx.compose.ui.window.ComposeUIViewController
-import com.example.toyotaobd.bluetooth.BleBluetoothRepository
+import com.example.toyotaobd.bluetooth.createBluetoothRepository
 import com.example.toyotaobd.data.CustomPidStore
 import com.example.toyotaobd.data.DashboardStore
 import com.example.toyotaobd.dev.DevDevices
@@ -17,13 +17,13 @@ import kotlinx.coroutines.SupervisorJob
 
 /**
  * Dépendances de l'application iOS : session OBD (horloge monotone du module partagé), Bluetooth
- * Low Energy CoreBluetooth (iOS ne connaît pas le SPP), stockage NSUserDefaults (mêmes clés que les
- * préférences Android), et les adaptateurs simulés du module partagé (comme en debug Android).
+ * Low Energy via Kable, stockage NSUserDefaults (mêmes clés que les préférences Android), et les
+ * adaptateurs simulés du module partagé (comme en debug Android).
  */
 private val deps: AppDependencies by lazy {
     AppDependencies(
         session = ObdSession(scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)),
-        bluetooth = BleBluetoothRepository(),
+        bluetooth = createBluetoothRepository(),
         dashboardStore = DashboardStore(DefaultsStore()),
         pidStore = CustomPidStore(DefaultsStore()),
         simulators = DevDevices.simulators,

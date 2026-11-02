@@ -10,7 +10,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.glance.appwidget.updateAll
-import com.example.toyotaobd.bluetooth.AndroidBluetoothRepository
+import com.example.toyotaobd.bluetooth.createBluetoothRepository
 import com.example.toyotaobd.data.CustomPidStore
 import com.example.toyotaobd.data.DashboardStore
 import com.example.toyotaobd.dev.DevDevices
@@ -37,14 +37,14 @@ class ObdApplication : Application() {
     }
 
     /**
-     * Dépendances de l'interface Compose partagée : session OBD, Bluetooth SPP, stockage du tableau
-     * de bord et des PID personnalisés (mêmes fichiers de préférences qu'avant la migration), et
-     * adaptateurs simulés des builds debug.
+     * Dépendances de l'interface Compose partagée : session OBD, Bluetooth Low Energy (Kable),
+     * stockage du tableau de bord et des PID personnalisés (mêmes fichiers de préférences qu'avant
+     * la migration), et adaptateurs simulés des builds debug.
      */
     val deps: AppDependencies by lazy {
         AppDependencies(
             session = session,
-            bluetooth = AndroidBluetoothRepository(this),
+            bluetooth = createBluetoothRepository(this),
             dashboardStore = DashboardStore(SharedPreferencesStore(this, "dashboard")),
             pidStore = CustomPidStore(SharedPreferencesStore(this, "custom_pids")),
             simulators = DevDevices.simulators,

@@ -14,6 +14,21 @@ fun List<Sample>.appendWithin(sample: Sample, windowMs: Long, maxSamples: Int = 
     return subList(firstKept, size) + sample
 }
 
+/**
+ * Sous-liste des échantillons d'au moins [cutoffMs] (liste triée par temps) : recherche binaire,
+ * O(log n) même avec des milliers de valeurs (filtrer à chaque lecture ralentissait le défilement).
+ */
+fun List<Sample>.fromTime(cutoffMs: Long): List<Sample> {
+    if (isEmpty()) return this
+    var lo = 0
+    var hi = size
+    while (lo < hi) {
+        val mid = (lo + hi) ushr 1
+        if (this[mid].timeMs < cutoffMs) lo = mid + 1 else hi = mid
+    }
+    return if (lo == 0) this else subList(lo, size)
+}
+
 /** Découpe l'historique en tronçons : un écart de plus de [maxGapMs] entre deux valeurs en commence un nouveau. */
 fun List<Sample>.segments(maxGapMs: Long): List<List<Sample>> {
     val segments = mutableListOf<MutableList<Sample>>()
