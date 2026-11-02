@@ -2,10 +2,10 @@ package com.example.toyotaobd.data
 
 import com.example.toyotaobd.obd.Pids
 import com.example.toyotaobd.obd.ToyotaHybrid
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class DashboardLayoutTest {
 
@@ -41,7 +41,7 @@ class DashboardLayoutTest {
     }
 
     @Test
-    fun `tabs are the sections the vehicle provides, in order`() {
+    fun `tabs are the sections the vehicle provides in order`() {
         assertEquals(
             DashboardSection.entries,
             DashboardSection.present(listOf(Pids.COOLANT_TEMP.code, ToyotaHybrid.HV_CURRENT.code, Pids.SPEED.code)),
@@ -55,7 +55,7 @@ class DashboardLayoutTest {
     }
 
     @Test
-    fun `cards are grouped by section, in the saved order within each`() {
+    fun `cards are grouped by section in the saved order within each`() {
         val saved = DashboardLayout(
             listOf(
                 DashboardCard(Pids.COOLANT_TEMP.code, CardStyle.GAUGE),
@@ -121,7 +121,7 @@ class DashboardLayoutTest {
     }
 
     @Test
-    fun `an older layout gains the newer cards, a hidden one stays hidden afterwards`() {
+    fun `an older layout gains the newer cards and a hidden one stays hidden afterwards`() {
         val migrated = DashboardLayout.decode("1|15|0C:LW,0D:V")!!
         assertEquals(15, migrated.windowMinutes)
         assertEquals(listOf(0x0C, 0x0D), migrated.cards.take(2).map { it.pid })
@@ -157,7 +157,7 @@ class DashboardLayoutTest {
     }
 
     @Test
-    fun `cards can be hidden, shown again and restyled`() {
+    fun `cards can be hidden and shown again and restyled`() {
         val edited = layout.remove(0x0D).add(0x0D).update(0x0D) { it.copy(style = CardStyle.LINE, wide = true) }
         assertEquals(DashboardCard(0x0D, CardStyle.LINE, wide = true), edited.cards.last())
         assertEquals(layout, layout.add(0x0C))

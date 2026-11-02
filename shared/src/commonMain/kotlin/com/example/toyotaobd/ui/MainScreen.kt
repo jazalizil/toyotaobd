@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,7 +32,8 @@ import com.example.toyotaobd.session.ConnectionState
 import com.example.toyotaobd.util.fmt
 
 private enum class Tab(val label: String, val icon: ImageVector) {
-    LIVE("Données", Icons.Default.Home),
+    HOME("Accueil", Icons.Default.Home),
+    LIVE("Données", Icons.Default.PlayArrow),
     DTC("Codes", Icons.Default.Warning),
     TOYOTA("Toyota", Icons.Default.Build),
     CONSOLE("Console", Icons.AutoMirrored.Filled.List),
@@ -40,7 +42,7 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(vm: ObdViewModel, connection: ConnectionState.Connected) {
-    var tab by rememberSaveable { mutableStateOf(Tab.LIVE) }
+    var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
     RequestNotificationPermissionOnce()
     val live by vm.live.collectAsStateWithLifecycle()
     val info = connection.info
@@ -78,6 +80,12 @@ fun MainScreen(vm: ObdViewModel, connection: ConnectionState.Connected) {
     ) { padding ->
         Box(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize()) {
             when (tab) {
+                Tab.HOME -> HomeScreen(
+                    vm = vm,
+                    connection = connection,
+                    onOpenLive = { tab = Tab.LIVE },
+                    onOpenDtc = { tab = Tab.DTC },
+                )
                 Tab.LIVE -> DashboardScreen(vm, info)
                 Tab.DTC -> DtcScreen(vm)
                 Tab.TOYOTA -> ToyotaScreen(vm, info)

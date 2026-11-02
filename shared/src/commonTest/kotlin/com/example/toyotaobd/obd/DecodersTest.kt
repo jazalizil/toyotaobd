@@ -1,11 +1,11 @@
 package com.example.toyotaobd.obd
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 class DecodersTest {
 
@@ -85,12 +85,12 @@ class DecodersTest {
 
     @Test
     fun `formula errors`() {
-        assertThrows(FormulaException::class.java) { Formula("") }
-        assertThrows(FormulaException::class.java) { Formula("(A+1") }
-        assertThrows(FormulaException::class.java) { Formula("AB") }
-        assertThrows(FormulaException::class.java) { Formula("A % 2") }
-        assertThrows(FormulaException::class.java) { Formula("B").evaluate(listOf(1)) }
-        assertThrows(FormulaException::class.java) { Formula("A/B").evaluate(listOf(1, 0)) }
+        assertFailsWith<FormulaException> { Formula("") }
+        assertFailsWith<FormulaException> { Formula("(A+1") }
+        assertFailsWith<FormulaException> { Formula("AB") }
+        assertFailsWith<FormulaException> { Formula("A % 2") }
+        assertFailsWith<FormulaException> { Formula("B").evaluate(listOf(1)) }
+        assertFailsWith<FormulaException> { Formula("A/B").evaluate(listOf(1, 0)) }
     }
 
     @Test

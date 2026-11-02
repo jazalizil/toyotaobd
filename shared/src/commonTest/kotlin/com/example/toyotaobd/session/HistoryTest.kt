@@ -1,7 +1,7 @@
 package com.example.toyotaobd.session
 
-import org.junit.Assert.assertEquals
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.Test
 
 class HistoryTest {
 

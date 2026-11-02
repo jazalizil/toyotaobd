@@ -48,7 +48,8 @@ kotlin {
         iosMain.dependencies {
         }
         commonTest.dependencies {
-            implementation(libs.junit)
+            // kotlin("test") : framework adapté à chaque cible (JUnit4 sur Android, natif sur iOS).
+            implementation(kotlin("test"))
         }
     }
 }

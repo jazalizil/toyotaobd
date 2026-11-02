@@ -1,10 +1,10 @@
 package com.example.toyotaobd.obd
 
 import com.example.toyotaobd.obd.ResponseParser.hexBytes
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.test.Test
 
 /**
  * Décodeurs hybrides face à des trames réelles (en-têtes activés) : Lexus UX 250h 2023 relevé par
@@ -21,7 +21,7 @@ class ToyotaHybridTest {
     private fun Pid.of(payload: List<Int>): Double = decodeEnhanced(payload)!!
 
     @Test
-    fun `TNGA battery voltage, signed current and power`() {
+    fun `TNGA battery voltage and signed current and power`() {
         val traction = payload("221F9A", "7DA1009621F9A0E0030", "7DA2100043100000000")
         assertEquals(192.0, ToyotaHybrid.HV_VOLTAGE.of(traction), 0.01)
         assertEquals(107.3, ToyotaHybrid.HV_CURRENT.of(traction), 0.01)
@@ -33,7 +33,7 @@ class ToyotaHybridTest {
     }
 
     @Test
-    fun `TNGA motor, boost converter and charge`() {
+    fun `TNGA motor and boost converter and charge`() {
         val motor = payload("2210A1", "7DA100C6210A17C777F", "7DA21EC03007FF00400")
         assertEquals(-905.0, ToyotaHybrid.MOTOR_RPM.of(motor), 0.01)
         assertEquals(-2.0, ToyotaHybrid.MOTOR_TORQUE.of(motor), 0.01)

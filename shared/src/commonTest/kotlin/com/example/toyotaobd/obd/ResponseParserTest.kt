@@ -1,13 +1,13 @@
 package com.example.toyotaobd.obd
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.Test
 
 class ResponseParserTest {
 
     @Test
-    fun `strips noise, echo and NUL bytes`() {
+    fun `strips noise and echo and NUL bytes`() {
         val raw = "0100\r\u0000SEARCHING...\rBUS INIT: ...OK\r41 00 BE 3F A8 13\r\r"
         assertEquals(listOf("41 00 BE 3F A8 13"), ResponseParser.lines(raw, echo = "0100"))
     }
